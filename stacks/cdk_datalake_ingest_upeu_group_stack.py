@@ -1,9 +1,9 @@
 from aws_cdk import Stack, Duration, aws_stepfunctions as sfn
 from constructs import Construct
-from sofia_cdk_libs.builders.resource_builder import ResourceBuilder
-from sofia_cdk_libs.builders.name_builder import NameBuilder
-from sofia_cdk_libs.constants.services import Services
-from sofia_cdk_libs.models.configs import GlueJobConfig, StepFunctionConfig
+from aje_cdk_libs.builders.resource_builder import ResourceBuilder
+from aje_cdk_libs.builders.name_builder import NameBuilder
+from aje_cdk_libs.constants.services import Services
+from aje_cdk_libs.models.configs import GlueJobConfig, StepFunctionConfig
 from constants.paths import Paths
 import csv
 import json
@@ -135,7 +135,7 @@ class CdkDatalakeIngestUpeuGroupStack(Stack):
     def _create_jobs_for_table(self, row, logical_name, credentials):
         import aws_cdk.aws_glue_alpha as glue
         import json
-        from sofia_cdk_libs.models.configs import GlueJobConfig
+        from aje_cdk_libs.models.configs import GlueJobConfig
         
         table_columns = [col for col in self.columns if col['TABLE_NAME'].upper() == logical_name.upper()]
         
@@ -601,8 +601,8 @@ class CdkDatalakeIngestUpeuGroupStack(Stack):
         # Create the Step Function that uses the base Step Function
         sf_name = f"{self.PROJECT_CONFIG.app_config['datasource'].lower()}_orchestrate_extract_{self.src_db_name.lower()}_{self.process_id}"
         
-        # Use sofia_cdk_libs approach for consistency with base stack
-        from sofia_cdk_libs.models.configs import StepFunctionConfig
+        # Use aje_cdk_libs approach for consistency with base stack
+        from aje_cdk_libs.models.configs import StepFunctionConfig
         
         step_function_tags = self._create_job_tags('Orchestration')
         

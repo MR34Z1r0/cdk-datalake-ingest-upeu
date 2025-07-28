@@ -4,8 +4,9 @@ import aws_cdk as cdk
 from stacks.cdk_datalake_ingest_upeu_stack import CdkDatalakeIngestUpeuStack
 from stacks.cdk_datalake_ingest_upeu_group_stack import CdkDatalakeIngestUpeuGroupStack
 from stacks.cdk_datalake_ingest_upeu_instance_stack import CdkDatalakeIngestUpeuInstanceStack
-from sofia_cdk_libs.constants.environments import Environments
-from sofia_cdk_libs.constants.project_config import ProjectConfig
+from aje_cdk_libs.constants.environments import Environments
+from aje_cdk_libs.constants.project_config import ProjectConfig
+from constants.paths import Paths
 from dotenv import load_dotenv
 import csv
 import json
@@ -29,6 +30,7 @@ CONFIG["region_name"] = os.getenv("REGION_NAME", None)
 CONFIG["environment"] = os.getenv("ENVIRONMENT", None) 
 CONFIG["separator"] = os.getenv("SEPARATOR", "-") 
 project_config = ProjectConfig.from_dict(CONFIG)
+project_paths = Paths(project_config.app_config)
 
 # Print some deployment information
 print(f"Deploying Datalake Ingest Upeu to:")
@@ -53,7 +55,7 @@ all_process_ids = set()
 shared_tables = {}  
 shared_job_registry = {}
 
-with open('artifacts/configuration/csv/tables.csv', newline='', encoding='utf-8') as tables_file:
+with open(f'{project_paths}/tables.csv', newline='', encoding='utf-8') as tables_file:
     tables_reader = csv.DictReader(tables_file, delimiter=';')
     for row in tables_reader:
         if row['PROCESS_ID'] and row['SOURCE_SCHEMA'] and row['SOURCE_TABLE']:
@@ -72,7 +74,7 @@ instance_groups = {}  # instance -> list of db_names
 current_env = project_config.environment.value.upper()  # Get current environment (DEV/PROD)
 #print(f"current_env: {current_env}")
 #print(f"shared_tables: {shared_tables}")
-with open('artifacts/configuration/csv/credentials.csv', newline='', encoding='utf-8') as creds_file:
+with open(f'{project_paths}/credentials.csv', newline='', encoding='utf-8') as creds_file:
     creds_reader = csv.DictReader(creds_file, delimiter=';')
     for row in creds_reader:
         # Only include databases for the current environment

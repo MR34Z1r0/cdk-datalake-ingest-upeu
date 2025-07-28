@@ -8,10 +8,10 @@ from aws_cdk import (
     aws_iam as iam,
     aws_lambda as _lambda
 )
-from sofia_cdk_libs.builders.resource_builder import ResourceBuilder
-from sofia_cdk_libs.builders.name_builder import NameBuilder
-from sofia_cdk_libs.models.configs import StepFunctionConfig, LambdaConfig
-from sofia_cdk_libs.constants.services import Services
+from aje_cdk_libs.builders.resource_builder import ResourceBuilder
+from aje_cdk_libs.builders.name_builder import NameBuilder
+from aje_cdk_libs.models.configs import StepFunctionConfig, LambdaConfig
+from aje_cdk_libs.constants.services import Services
 import json
 
 

@@ -13,10 +13,10 @@ from aws_cdk import (
     Duration
 )
 from constructs import Construct
-from sofia_cdk_libs.builders.resource_builder import ResourceBuilder
-from sofia_cdk_libs.builders.name_builder import NameBuilder
-from sofia_cdk_libs.constants.services import Services
-from sofia_cdk_libs.models.configs import RoleConfig, GlueConnectionConfig, SecretConfig
+from aje_cdk_libs.builders.resource_builder import ResourceBuilder
+from aje_cdk_libs.builders.name_builder import NameBuilder
+from aje_cdk_libs.constants.services import Services
+from aje_cdk_libs.models.configs import RoleConfig, GlueConnectionConfig, SecretConfig
 from constants.paths import Paths
 
 class CdkDatalakeIngestUpeuStack(Stack):
@@ -132,7 +132,7 @@ class CdkDatalakeIngestUpeuStack(Stack):
     def _create_catalog_job(self, database_name):
         from aws_cdk import Duration
         import aws_cdk.aws_glue_alpha as glue
-        from sofia_cdk_libs.models.configs import GlueJobConfig
+        from aje_cdk_libs.models.configs import GlueJobConfig
         
         job_name = f"{self.PROJECT_CONFIG.app_config['datasource'].lower()}_catalog_{database_name.lower()}"
         catalog_tags = self._create_job_tags('Catalog', database_name)
@@ -167,7 +167,7 @@ class CdkDatalakeIngestUpeuStack(Stack):
 
     def _create_crawler_glue_jobs(self):
         """Create crawler jobs for each database"""
-        from sofia_cdk_libs.models.configs import GlueJobConfig
+        from aje_cdk_libs.models.configs import GlueJobConfig
         from aws_cdk import Duration
         import aws_cdk.aws_glue_alpha as glue
         import csv
@@ -487,7 +487,7 @@ class CdkDatalakeIngestUpeuStack(Stack):
         )
         
         definition = start_job.next(check_job_status)
-        from sofia_cdk_libs.models.configs import StepFunctionConfig
+        from aje_cdk_libs.models.configs import StepFunctionConfig
         
         sf_name = f"{self.PROJECT_CONFIG.app_config['datasource'].lower()}_base_job_executor"
         
@@ -529,7 +529,7 @@ class CdkDatalakeIngestUpeuStack(Stack):
     def _deploy_scripts_to_s3(self):
         """Deploy Glue code and CSV configuration files to S3 buckets"""
         import aws_cdk.aws_s3_deployment as s3_deployment
-        from sofia_cdk_libs.models.configs import S3DeploymentConfig
+        from aje_cdk_libs.models.configs import S3DeploymentConfig
         
         # Deploy raw scripts
         resource_name = "raw"

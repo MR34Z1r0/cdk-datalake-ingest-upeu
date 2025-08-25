@@ -1,0 +1,96 @@
+{
+  "app": "python app.py",
+  "watch": {
+    "include": [
+      "**"
+    ],
+    "exclude": [
+      "README.md",
+      "cdk*.json",
+      "requirements*.txt",
+      "source.bat",
+      "**/__init__.py",
+      "**/__pycache__",
+      "tests"
+    ]
+  },
+  "context": {
+    "project_config": {
+      "enterprise": "aje",
+      "project_name": "datalake",
+      "project_description": "Datalake Ingest Bigmagic",
+      "author": "Miguel Espinoza Alvarez",
+      "email": "miguel.espinoza@ajegroup.com",
+      "version": "1.0.0",
+      "app_config": {
+        "dev": {
+          "artifacts": {
+            "local": "./artifacts",
+            "aws_lambda_layers": {
+              "layer_aje_libs": "arn:aws:lambda:${region}:${account}:layer:layer_aje_libs:3",
+              "layer_pyodbc": "arn:aws:lambda:${region}:${account}:layer:layer_pyodbc:2",
+              "layer_pytz": "arn:aws:lambda:${region}:${account}:layer:ajedevpytzlayer789CA971:1"
+            }
+          },
+          "topic_notifications": {
+              "failed": "sofia-dev-datalake-failed-sns",
+              "success": "sofia-dev-datalake-success-sns"
+          },
+          "sns_notifications": [
+            "mespinoza1388@gmail.com"
+          ],
+          "s3_buckets": {
+            "artifacts": "sofia-dev-datalake-509399624591-us-east-1-artifacts-s3",
+            "landing": "sofia-dev-datalake-509399624591-us-east-1-landing-s3",
+            "raw": "sofia-dev-datalake-509399624591-us-east-1-raw-s3",
+            "stage": "sofia-dev-datalake-509399624591-us-east-1-stage-s3",
+            "analytics": "sofia-dev-datalake-509399624591-us-east-1-analytics-s3"
+          },
+          "dynamodb_tables":{
+            "configuration": "sofia-dev-datalake-configuration-ddb",
+            "credentials": "sofia-dev-datalake-credentials-ddb",
+            "columns-specifications": "sofia-dev-datalake-columns-specifications-ddb",
+            "logs": "sofia-dev-datalake-logs-ddb"
+          },
+          "team": "genesis",
+          "datasource": "upeu",
+          "log_level": "DEBUG",
+          "comment": "Process to ingest data from Upeu to Datalake DEV environment"
+        },
+        "prod": {
+          "artifacts": {
+            "local": "./artifacts",
+            "aws_lambda_layers": {
+              "layer_aje_libs": "arn:aws:lambda:${region}:${account}:layer:layer_aje_libs:3",
+              "layer_pyodbc": "arn:aws:lambda:${region}:${account}:layer:layer_pyodbc:1"
+            }
+          },
+          "topic_notifications": {
+              "failed": "sofia-prod-datalake-failed-sns",
+              "success": "sofia-prod-datalake-success-sns"
+          },
+          "sns_notifications": [
+            "mespinoza1388@gmail.com"
+          ],
+          "s3_buckets": {
+            "artifacts": "sofia-prod-datalake-509399624591-us-east-2-artifacts-s3",
+            "landing": "sofia-prod-datalake-509399624591-us-east-2-landing-s3",
+            "raw": "sofia-prod-datalake-509399624591-us-east-2-raw-s3",
+            "stage": "sofia-prod-datalake-509399624591-us-east-2-stage-s3",
+            "analytics": "sofia-prod-datalake-509399624591-us-east-2-analytics-s3"
+          },
+          "dynamodb_tables":{
+            "configuration": "sofia-prod-datalake-configuration-ddb",
+            "credentials": "sofia-prod-datalake-credentials-ddb",
+            "columns-specifications": "sofia-prod-datalake-columns-specifications-ddb",
+            "logs": "sofia-prod-datalake-logs-ddb"
+          },
+          "team": "genesis",
+          "datasource": "upeu",
+          "log_level": "DEBUG",
+          "comment": "Process to ingest data from Upeu to Datalake PROD environment"
+        }
+      }
+    }
+  }
+}

@@ -16,11 +16,11 @@
   },
   "context": {
     "project_config": {
-      "enterprise": "aje",
+      "enterprise": "sofia",
       "project_name": "datalake",
       "project_description": "Datalake Ingest Bigmagic",
       "author": "Miguel Espinoza Alvarez",
-      "email": "miguel.espinoza@ajegroup.com",
+      "email": "mespinoza1388@gmail.com",
       "version": "1.0.0",
       "app_config": {
         "dev": {

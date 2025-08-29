@@ -1350,20 +1350,20 @@ if IS_AWS_GLUE:
     }
 else: 
     config = {
-                'S3_RAW_BUCKET': "sofia-dev-datalake-510543735161-us-east-1-raw-s3",
+                'S3_RAW_BUCKET': "sofia-dev-datalake-509399624591-us-east-1-raw-s3",
                 'DYNAMO_LOGS_TABLE': "sofia-dev-datalake-logs-ddb",
                 'ENVIRONMENT': "DEV",
                 'PROJECT_NAME': "datalake",
-                'TEAM': "apdayc",
-                'DATA_SOURCE': "bigmagic",
+                'TEAM': "genesis",
+                'DATA_SOURCE': "upeu",
                 'THREADS_FOR_INCREMENTAL_LOADS': 6,
-                'TOPIC_ARN': "arn:aws:sns:us-east-1:510543735161:sofia-dev-datalake-failed-sns",
+                'TOPIC_ARN': "arn:aws:sns:us-east-1:509399624591:sofia-dev-datalake-failed-sns",
                 'REGION': "us-east-1",
                 # Configuration parameters - pass CSV paths instead of large JSON to avoid template size limits
                 'TABLES_CSV_S3': "../../artifacts/configuration/csv/tables.csv",
                 'CREDENTIALS_CSV_S3': "../../artifacts/configuration/csv/credentials.csv",
                 'COLUMNS_CSV_S3': "../../artifacts/configuration/csv/columns.csv",
-                'ENDPOINT_NAME': "PEBDDATA2", 
+                'ENDPOINT_NAME': "PEUPEU", 
                 "FORCE_FULL_LOAD": False
             }
     # Parse command line arguments
@@ -1374,7 +1374,7 @@ else:
     config["TABLE_NAME"] = args.TABLE_NAME
      
 region_name = config["REGION"]
-boto3.setup_default_session(profile_name='prod-compliance-admin', region_name=region_name)
+boto3.setup_default_session(profile_name='prd-upeu-admin', region_name=region_name)
 
 logger = custom_logger(__name__)
 

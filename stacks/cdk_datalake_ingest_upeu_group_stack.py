@@ -89,10 +89,6 @@ class CdkDatalakeIngestBigmagicGroupStack(Stack):
         if crawler_key in self.base_stack_outputs:
             self.crawler_name = self.base_stack_outputs[crawler_key]
             
-        # Import load job names from base stack
-        self.load_to_redshift_job_name = self.base_stack_outputs.get('LoadToRedshiftJobName')
-        self.load_to_odscorp_job_name = self.base_stack_outputs.get('LoadToODSCorpJobName')
-            
         self.base_step_function = sfn.StateMachine.from_state_machine_arn(
             self, "BaseStepFunction", self.base_stack_outputs["BaseStepFunctionArn"])
 
@@ -141,10 +137,11 @@ class CdkDatalakeIngestBigmagicGroupStack(Stack):
             else:
                 # Reference jobs from the registry (created in another stack)
                 job_info = self._reference_jobs_from_registry(logical_name)
+                extract_job_name = self.name_builder.build(Services.GLUE_JOB, job_info['extract_job_name'])
                 if job_info:
                     # Add referenced jobs to our registry too
                     self.job_name_registry.append({
-                        'extract_job_name': job_info['extract_job_name'],
+                        'extract_job_name': extract_job_name,
                         'light_job_name': job_info['light_job_name'],
                         'table_name': logical_name
                     })
@@ -324,19 +321,6 @@ class CdkDatalakeIngestBigmagicGroupStack(Stack):
             extract_job_configs = [job for job in job_configs if job["job_type"] == "extract"]
             transform_job_configs = [job for job in job_configs if job["job_type"] == "light_transform"]
             
-            # Simple approach: use Choice states with IsPresent to set defaults
-            check_extract_present = sfn.Choice(self, "CheckExtractPresent")
-            
-            set_all_defaults = sfn.Pass(
-                self, "SetAllDefaults",
-                parameters={
-                    "run_extract": True,
-                    "run_light_transform": True,
-                    "run_legacy_load": True,
-                    "instance.$": "$.instance"
-                }
-            )
-            
             # Create a Choice state to evaluate the run_extract flag
             run_extract_choice = sfn.Choice(self, "ShouldRunExtract")
             
@@ -349,7 +333,6 @@ class CdkDatalakeIngestBigmagicGroupStack(Stack):
                     "endpoint_name": self.endpoint_name,
                     "execution_start.$": "$$.Execution.StartTime",
                     "job_type": "extract",
-                    "instance.$": "$.instance"
                 },
                 result_path="$.extract_job_configs"
             )
@@ -370,10 +353,6 @@ class CdkDatalakeIngestBigmagicGroupStack(Stack):
                     "endpoint_name": self.endpoint_name,
                     "execution_start.$": "$$.Execution.StartTime",
                     "job_type": "transform",
-                    "instance.$": "$.instance",
-                    "run_legacy_load.$": "$.run_legacy_load",
-                    "run_extract.$": "$.run_extract",
-                    "run_light_transform.$": "$.run_light_transform"
                 },
                 result_path=None
             )
@@ -386,10 +365,6 @@ class CdkDatalakeIngestBigmagicGroupStack(Stack):
                     "endpoint_name": self.endpoint_name,
                     "execution_start.$": "$$.Execution.StartTime",
                     "job_type": "transform",
-                    "instance.$": "$.instance",
-                    "run_legacy_load.$": "$.run_legacy_load",
-                    "run_extract.$": "$.run_extract",
-                    "run_light_transform.$": "$.run_light_transform"
                 },
                 result_path=None  # Overwrite input with this object
             )
@@ -484,277 +459,69 @@ class CdkDatalakeIngestBigmagicGroupStack(Stack):
             transform_map_state_extract_branch.iterator(invoke_transform_job_extract_branch)
             transform_map_state_only_branch.iterator(invoke_transform_job_only_branch)
             
-            # Create Choice states to evaluate the run_light_transform flag (need separate instances for different branches)
-            run_light_transform_choice_extract = sfn.Choice(self, "ShouldRunLightTransformAfterExtract")
-            run_light_transform_choice_standalone = sfn.Choice(self, "ShouldRunLightTransformStandalone")
+            # Create the extract workflow branch
+            extract_workflow = prepare_extract_jobs.next(extract_map_state).next(prepare_transform_jobs_extract_branch).next(transform_map_state_extract_branch)
             
-            # Create the extract workflow branch (extract -> then choice for transform)
-            extract_workflow = prepare_extract_jobs.next(extract_map_state)
-            
-            # Create the transform workflows
-            extract_then_transform_workflow = prepare_transform_jobs_extract_branch.next(transform_map_state_extract_branch)
+            # Create the transform-only workflow branch
             transform_only_workflow = prepare_transform_jobs_only_branch.next(transform_map_state_only_branch)
             
             # Create a task to invoke the crawler job after transform jobs
-            if self.crawler_job_name or self.load_to_redshift_job_name or self.load_to_odscorp_job_name:
-                # Create a Choice state to evaluate the run_legacy_load flag
-                run_legacy_load_choice = sfn.Choice(self, "ShouldRunLegacyLoad")
-                
-                # Create parallel states for crawler and legacy load jobs (when run_legacy_load is True)
-                parallel_jobs_with_legacy = sfn.Parallel(
-                    self, "RunParallelJobsWithLegacy",
-                    result_path="$.parallel_results"
+            if self.crawler_job_name:
+                # Create a Pass state to prepare crawler job parameters
+                prepare_crawler_job = sfn.Pass(
+                    self, "PrepareCrawlerJob",
+                    parameters={
+                        "job_name": self.crawler_job_name,
+                        "process_id": str(self.process_id),
+                        "endpoint_name": self.endpoint_name,
+                        "execution_start.$": "$$.Execution.StartTime"
+                    },
+                    result_path="$.crawler_job_config"
                 )
                 
-                # Create crawler job configuration (shared between both branches)
-                crawler_workflow = None
-                if self.crawler_job_name:
-                    # Create a Pass state to prepare crawler job parameters for standalone execution
-                    prepare_crawler_job_standalone = sfn.Pass(
-                        self, "PrepareCrawlerJobStandalone",
-                        parameters={
-                            "job_name": self.crawler_job_name,
-                            "process_id": str(self.process_id),
-                            "endpoint_name": self.endpoint_name,
-                            "execution_start.$": "$$.Execution.StartTime",
-                            "instance.$": "$.instance"
-                        },
-                        result_path="$.crawler_job_config"
-                    )
-                    
-                    # Create a task to invoke the base Step Function for the crawler job (standalone)
-                    invoke_crawler_job_standalone = tasks.StepFunctionsStartExecution(
-                        self, "InvokeCrawlerJobStandalone",
-                        state_machine=self.base_step_function,
-                        integration_pattern=sfn.IntegrationPattern.RUN_JOB,
-                        input=sfn.TaskInput.from_object({
-                            "job_name": sfn.JsonPath.string_at("$.crawler_job_config.job_name"),
-                            "job_arguments": {
-                                "--PROCESS_ID": sfn.JsonPath.string_at("$.crawler_job_config.process_id"),
-                                "--ENDPOINT_NAME": sfn.JsonPath.string_at("$.crawler_job_config.endpoint_name")
-                            }
-                        }),
-                        result_path="$.crawler_execution_result"
-                    )
-                    
-                    # Add retry for crawler job execution failures (standalone)
-                    invoke_crawler_job_standalone.add_retry(
-                        max_attempts=2,
-                        interval=Duration.seconds(10),
-                        backoff_rate=1.5,
-                        errors=["States.TaskFailed", "Lambda.ServiceException", "Lambda.AWSLambdaException"]
-                    )
-                    
-                    # Create crawler workflow for standalone execution
-                    crawler_workflow = prepare_crawler_job_standalone.next(invoke_crawler_job_standalone)
-                    
-                    # Create separate Pass state and task for parallel execution with legacy loads
-                    prepare_crawler_job_parallel = sfn.Pass(
-                        self, "PrepareCrawlerJobParallel",
-                        parameters={
-                            "job_name": self.crawler_job_name,
-                            "process_id": str(self.process_id),
-                            "endpoint_name": self.endpoint_name,
-                            "execution_start.$": "$$.Execution.StartTime",
-                            "instance.$": "$.instance"
-                        },
-                        result_path="$.crawler_job_config"
-                    )
-                    
-                    invoke_crawler_job_parallel = tasks.StepFunctionsStartExecution(
-                        self, "InvokeCrawlerJobParallel",
-                        state_machine=self.base_step_function,
-                        integration_pattern=sfn.IntegrationPattern.RUN_JOB,
-                        input=sfn.TaskInput.from_object({
-                            "job_name": sfn.JsonPath.string_at("$.crawler_job_config.job_name"),
-                            "job_arguments": {
-                                "--PROCESS_ID": sfn.JsonPath.string_at("$.crawler_job_config.process_id"),
-                                "--ENDPOINT_NAME": sfn.JsonPath.string_at("$.crawler_job_config.endpoint_name")
-                            }
-                        }),
-                        result_path="$.crawler_execution_result"
-                    )
-                    
-                    invoke_crawler_job_parallel.add_retry(
-                        max_attempts=2,
-                        interval=Duration.seconds(10),
-                        backoff_rate=1.5,
-                        errors=["States.TaskFailed", "Lambda.ServiceException", "Lambda.AWSLambdaException"]
-                    )
-                    
-                    # Create crawler branch for parallel execution with legacy loads
-                    crawler_branch = prepare_crawler_job_parallel.next(invoke_crawler_job_parallel)
-                    parallel_jobs_with_legacy.branch(crawler_branch)
-                
-                # Add Redshift load job if available
-                if self.load_to_redshift_job_name:
-                    # Create a Pass state to prepare Redshift job parameters
-                    prepare_redshift_job = sfn.Pass(
-                        self, "PrepareRedshiftJob",
-                        parameters={
-                            "job_name": self.load_to_redshift_job_name,
-                            "process_id": str(self.process_id),
-                            "endpoint_name": self.endpoint_name,
-                            "execution_start.$": "$$.Execution.StartTime",
-                            "instance.$": "$.instance"
-                        },
-                        result_path="$.redshift_job_config"
-                    )
-                    
-                    # Create a task to invoke the base Step Function for the Redshift job
-                    invoke_redshift_job = tasks.StepFunctionsStartExecution(
-                        self, "InvokeRedshiftJob",
-                        state_machine=self.base_step_function,
-                        integration_pattern=sfn.IntegrationPattern.RUN_JOB,
-                        input=sfn.TaskInput.from_object({
-                            "job_name": sfn.JsonPath.string_at("$.redshift_job_config.job_name"),
-                            "job_arguments": {
-                                "--PROCESS_ID": sfn.JsonPath.string_at("$.redshift_job_config.process_id"),
-                                "--ENDPOINT_NAME": sfn.JsonPath.string_at("$.redshift_job_config.endpoint_name"),
-                                "--INSTANCIAS": sfn.JsonPath.string_at("$.redshift_job_config.instance")
-                            }
-                        }),
-                        result_path="$.redshift_execution_result"
-                    )
-                    
-                    # Add retry for Redshift job execution failures
-                    invoke_redshift_job.add_retry(
-                        max_attempts=2,
-                        interval=Duration.seconds(10),
-                        backoff_rate=1.5,
-                        errors=["States.TaskFailed", "Lambda.ServiceException", "Lambda.AWSLambdaException"]
-                    )
-                    
-                    # Create Redshift branch
-                    redshift_branch = prepare_redshift_job.next(invoke_redshift_job)
-                    parallel_jobs_with_legacy.branch(redshift_branch)
-                
-                # Add ODS Corp load job if available
-                if self.load_to_odscorp_job_name:
-                    # Create a Pass state to prepare ODS Corp job parameters
-                    prepare_odscorp_job = sfn.Pass(
-                        self, "PrepareODSCorpJob",
-                        parameters={
-                            "job_name": self.load_to_odscorp_job_name,
-                            "process_id": str(self.process_id),
-                            "endpoint_name": self.endpoint_name,
-                            "execution_start.$": "$$.Execution.StartTime",
-                            "instance.$": "$.instance"
-                        },
-                        result_path="$.odscorp_job_config"
-                    )
-                    
-                    # Create a task to invoke the base Step Function for the ODS Corp job
-                    invoke_odscorp_job = tasks.StepFunctionsStartExecution(
-                        self, "InvokeODSCorpJob",
-                        state_machine=self.base_step_function,
-                        integration_pattern=sfn.IntegrationPattern.RUN_JOB,
-                        input=sfn.TaskInput.from_object({
-                            "job_name": sfn.JsonPath.string_at("$.odscorp_job_config.job_name"),
-                            "job_arguments": {
-                                "--PROCESS_ID": sfn.JsonPath.string_at("$.odscorp_job_config.process_id"),
-                                "--ENDPOINT_NAME": sfn.JsonPath.string_at("$.odscorp_job_config.endpoint_name"),
-                                "--INSTANCIAS": sfn.JsonPath.string_at("$.odscorp_job_config.instance")
-                            }
-                        }),
-                        result_path="$.odscorp_execution_result"
-                    )
-                    
-                    # Add retry for ODS Corp job execution failures
-                    invoke_odscorp_job.add_retry(
-                        max_attempts=2,
-                        interval=Duration.seconds(10),
-                        backoff_rate=1.5,
-                        errors=["States.TaskFailed", "Lambda.ServiceException", "Lambda.AWSLambdaException"]
-                    )
-                    
-                    # Create ODS Corp branch
-                    odscorp_branch = prepare_odscorp_job.next(invoke_odscorp_job)
-                    parallel_jobs_with_legacy.branch(odscorp_branch)
-                
-                # Create the choice between running with legacy loads or crawler only
-                legacy_load_workflow = run_legacy_load_choice.when(
-                    sfn.Condition.boolean_equals("$.run_legacy_load", True),
-                    parallel_jobs_with_legacy
-                ).otherwise(
-                    crawler_workflow if crawler_workflow else sfn.Pass(self, "SkipAllJobs")
+                # Create a task to invoke the base Step Function for the crawler job
+                invoke_crawler_job = tasks.StepFunctionsStartExecution(
+                    self, "InvokeCrawlerJob",
+                    state_machine=self.base_step_function,
+                    integration_pattern=sfn.IntegrationPattern.RUN_JOB,
+                    input=sfn.TaskInput.from_object({
+                        "job_name": sfn.JsonPath.string_at("$.crawler_job_config.job_name"),
+                        "job_arguments": {
+                            "--PROCESS_ID": sfn.JsonPath.string_at("$.crawler_job_config.process_id"),
+                            "--ENDPOINT_NAME": sfn.JsonPath.string_at("$.crawler_job_config.endpoint_name")
+                        }
+                    }),
+                    result_path="$.crawler_execution_result"
                 )
                 
-                # Connect transform workflows to legacy load choice
-                extract_then_transform_workflow.next(legacy_load_workflow)
-                transform_only_workflow.next(legacy_load_workflow)
-                
-                # Connect extract workflow to light transform choice, then to legacy loads
-                extract_light_transform_choice = run_light_transform_choice_extract.when(
-                    sfn.Condition.boolean_equals("$.run_light_transform", True),
-                    extract_then_transform_workflow
-                ).otherwise(
-                    legacy_load_workflow
-                )
-                extract_workflow.next(extract_light_transform_choice)
-                
-                # Create choice for transform-only path
-                transform_only_light_transform_choice = run_light_transform_choice_standalone.when(
-                    sfn.Condition.boolean_equals("$.run_light_transform", True),
-                    transform_only_workflow
-                ).otherwise(
-                    legacy_load_workflow
+                # Add retry for crawler job execution failures
+                invoke_crawler_job.add_retry(
+                    max_attempts=2,
+                    interval=Duration.seconds(10),
+                    backoff_rate=1.5,
+                    errors=["States.TaskFailed", "Lambda.ServiceException", "Lambda.AWSLambdaException"]
                 )
                 
-                # Define the main choice conditions and workflow branches
-                main_workflow = run_extract_choice.when(
-                    sfn.Condition.boolean_equals("$.run_extract", True),
-                    extract_workflow
-                ).otherwise(
-                    transform_only_light_transform_choice
-                )
-                
-                # Chain defaults check to main workflow
-                defaults_check = check_extract_present.when(
-                    sfn.Condition.is_present("$.run_extract"),
-                    main_workflow
-                ).otherwise(
-                    set_all_defaults.next(main_workflow)
-                )
-                
-                definition = defaults_check
+                # Add crawler job to both workflow branches
+                crawler_workflow = prepare_crawler_job.next(invoke_crawler_job)
+                extract_workflow.next(crawler_workflow)
+                transform_only_workflow.next(crawler_workflow)
             else:
                 # Create a pass state to skip the crawler if not available
                 skip_crawler = sfn.Pass(
                     self, "SkipCrawler",
                     result_path="$.skip_crawler"
                 )
-                
-                # Connect transform workflows to skip state
-                extract_then_transform_workflow.next(skip_crawler)
+                extract_workflow.next(skip_crawler)
                 transform_only_workflow.next(skip_crawler)
-                
-                # Connect extract workflow to light transform choice, then to skip
-                extract_light_transform_choice = run_light_transform_choice_extract.when(
-                    sfn.Condition.boolean_equals("$.run_light_transform", True),
-                    extract_then_transform_workflow
-                ).otherwise(
-                    skip_crawler
-                )
-                extract_workflow.next(extract_light_transform_choice)
-                
-                # Create choice for transform-only path
-                transform_only_light_transform_choice = run_light_transform_choice_standalone.when(
-                    sfn.Condition.boolean_equals("$.run_light_transform", True),
-                    transform_only_workflow
-                ).otherwise(
-                    skip_crawler
-                )
-                
-                # Define the main choice conditions and workflow branches
-                main_workflow = run_extract_choice.when(
-                    sfn.Condition.boolean_equals("$.run_extract", True),
-                    extract_workflow
-                ).otherwise(
-                    transform_only_light_transform_choice
-                )
-                
-                definition = set_defaults.next(main_workflow)
+            
+            # Define the choice conditions and workflow branches
+            definition = run_extract_choice.when(
+                sfn.Condition.boolean_equals("$.run_extract", True),
+                extract_workflow
+            ).otherwise(
+                transform_only_workflow
+            )
             
             # Create error handler states
             processing_failed = sfn.Fail(
@@ -781,27 +548,7 @@ class CdkDatalakeIngestBigmagicGroupStack(Stack):
             transform_map_state_extract_branch.add_catch(handle_map_failures, errors=["States.ALL"], result_path="$.transform_error")
             transform_map_state_only_branch.add_catch(handle_map_failures, errors=["States.ALL"], result_path="$.transform_error")
         else:
-            # Simple case when no tables to process - just pass through with defaults check
-            check_extract_present_no_tables = sfn.Choice(self, "CheckExtractPresentNoTables")
-            
-            set_all_defaults_no_tables = sfn.Pass(
-                self, "SetAllDefaultsNoTables",
-                parameters={
-                    "run_extract": True,
-                    "run_light_transform": True,
-                    "run_legacy_load": True,
-                    "instance.$": "$.instance"
-                }
-            )
-            
-            no_tables_pass = sfn.Pass(self, "NoTablesToProcess")
-            
-            definition = check_extract_present_no_tables.when(
-                sfn.Condition.is_present("$.run_extract"),
-                no_tables_pass
-            ).otherwise(
-                set_all_defaults_no_tables.next(no_tables_pass)
-            )
+            definition = sfn.Pass(self, "NoTablesToProcess")
 
         # Create the Step Function that uses the base Step Function
         sf_name = f"workflow_extract_{self.PROJECT_CONFIG.app_config['datasource'].lower()}_{self.endpoint_name.lower()}_{self.process_id}"
@@ -810,7 +557,7 @@ class CdkDatalakeIngestBigmagicGroupStack(Stack):
         
         sf_config = StepFunctionConfig(
             name=sf_name,
-            definition=definition,
+            definition_body=sfn.DefinitionBody.from_chainable(definition),
             timeout=Duration.hours(4),  # Extend timeout to handle multiple jobs
             role=self.role_step_function,
             tags=step_function_tags

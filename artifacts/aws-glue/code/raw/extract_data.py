@@ -17,6 +17,7 @@ from dateutil.relativedelta import relativedelta
 
 IS_AWS_GLUE = True
 IS_AWS_S3 = True
+PARQUET_AVAILABLE = True
 
 import pyarrow as pa
 import pyarrow.parquet as pq

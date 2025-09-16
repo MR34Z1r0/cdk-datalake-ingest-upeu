@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 from typing import List, Dict, Any
-from .base_strategy import BaseStrategy
-from ..utils.date_utils import get_date_limits
+from base_strategy import BaseStrategy
+from utils.date_utils import get_date_limits
 
 class FullLoadStrategy(BaseStrategy):
     """Strategy for full data extraction"""

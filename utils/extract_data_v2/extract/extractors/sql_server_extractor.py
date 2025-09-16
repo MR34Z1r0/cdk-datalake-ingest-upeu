@@ -2,10 +2,10 @@
 import pymssql
 import pandas as pd
 from typing import Optional, Tuple, Iterator, Dict, Any
-from ...interfaces.extractor_interface import ExtractorInterface
-from ...models.database_config import DatabaseConfig
-from ...exceptions.custom_exceptions import ConnectionError, ExtractionError
-from ...aje_libs.common.helpers.secrets_helper import SecretsHelper
+from interfaces.extractor_interface import ExtractorInterface
+from models.database_config import DatabaseConfig
+from exceptions.custom_exceptions import ConnectionError, ExtractionError
+from aje_libs.common.helpers.secrets_helper import SecretsHelper
 
 class SQLServerExtractor(ExtractorInterface):
     """SQL Server implementation of ExtractorInterface"""

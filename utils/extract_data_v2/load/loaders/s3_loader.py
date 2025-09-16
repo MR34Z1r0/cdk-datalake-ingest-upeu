@@ -3,9 +3,9 @@ import boto3
 import uuid
 from typing import List, Optional, Dict, Any
 import pandas as pd
-from ...interfaces.loader_interface import LoaderInterface
-from ...exceptions.custom_exceptions import LoadError
-from ...aje_libs.common.helpers.s3_helper import S3Helper
+from interfaces.loader_interface import LoaderInterface
+from exceptions.custom_exceptions import LoadError
+from aje_libs.common.helpers.s3_helper import S3Helper
 
 class S3Loader(LoaderInterface):
     """S3 implementation of LoaderInterface"""

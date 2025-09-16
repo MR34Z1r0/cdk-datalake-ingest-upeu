@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 from typing import Dict, Type
-from ..interfaces.monitor_interface import MonitorInterface
-from .monitors.dynamodb_monitor import DynamoDBMonitor
-from ..exceptions.custom_exceptions import ConfigurationError
+from interfaces.monitor_interface import MonitorInterface
+from monitors.dynamodb_monitor import DynamoDBMonitor
+from exceptions.custom_exceptions import ConfigurationError
 
 class MonitorFactory:
     """Factory to create appropriate monitor instances"""

@@ -2,7 +2,7 @@
 from abc import ABC, abstractmethod
 from typing import Union, Iterator, Optional, Tuple
 import pandas as pd
-from ..models.database_config import DatabaseConfig
+from models.database_config import DatabaseConfig
 
 class ExtractorInterface(ABC):
     """Interface for all data extractors"""

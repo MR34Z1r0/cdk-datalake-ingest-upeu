@@ -4,7 +4,7 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 import io
 from typing import Dict, Any, Optional
-from ...exceptions.custom_exceptions import LoadError
+from exceptions.custom_exceptions import LoadError
 
 class ParquetFormatter:
     """Format data as Parquet files"""

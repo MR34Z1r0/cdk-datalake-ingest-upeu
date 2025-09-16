@@ -1,9 +1,9 @@
 # -*- coding: utf-8 -*-
 from typing import List, Dict, Any
 from datetime import datetime, timedelta
-from .base_strategy import BaseStrategy
-from ..utils.date_utils import transform_to_datetime
-from ..exceptions.custom_exceptions import ConfigurationError
+from base_strategy import BaseStrategy
+from utils.date_utils import transform_to_datetime
+from exceptions.custom_exceptions import ConfigurationError
 
 class DateRangeStrategy(BaseStrategy):
     """Strategy for date range based extraction with parallel processing"""
@@ -99,7 +99,7 @@ class DateRangeStrategy(BaseStrategy):
     
     def _build_date_range_query(self, start_date: str, end_date: str) -> str:
         """Build query for specific date range"""
-        from ..utils.date_utils import format_date_for_db
+        from utils.date_utils import format_date_for_db
         
         # Get filter column and type
         filter_column = self.table_config.filter_column.strip()

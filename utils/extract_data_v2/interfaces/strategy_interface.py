@@ -1,9 +1,9 @@
 # -*- coding: utf-8 -*-
 from abc import ABC, abstractmethod
 from typing import List, Dict, Any
-from ..models.table_config import TableConfig
-from ..models.extraction_config import ExtractionConfig
-from ..models.extraction_result import ExtractionResult
+from models.table_config import TableConfig
+from models.extraction_config import ExtractionConfig
+from models.extraction_result import ExtractionResult
 
 class StrategyInterface(ABC):
     """Interface for all extraction strategies"""

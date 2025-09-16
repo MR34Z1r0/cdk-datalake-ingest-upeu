@@ -1,9 +1,9 @@
 # -*- coding: utf-8 -*-
 from typing import Dict, Type
-from ..interfaces.extractor_interface import ExtractorInterface
-from ..models.database_config import DatabaseConfig
-from .extractors.sql_server_extractor import SQLServerExtractor
-from ..exceptions.custom_exceptions import ConfigurationError
+from interfaces.extractor_interface import ExtractorInterface
+from models.database_config import DatabaseConfig
+from extractors.sql_server_extractor import SQLServerExtractor
+from exceptions.custom_exceptions import ConfigurationError
 
 class ExtractorFactory:
     """Factory to create appropriate extractor instances"""

@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 from typing import List, Dict, Any, Tuple
-from .base_strategy import BaseStrategy
-from ..exceptions.custom_exceptions import ConfigurationError
+from base_strategy import BaseStrategy
+from exceptions.custom_exceptions import ConfigurationError
 
 class PartitionedStrategy(BaseStrategy):
     """Strategy for partitioned data extraction based on min/max range"""

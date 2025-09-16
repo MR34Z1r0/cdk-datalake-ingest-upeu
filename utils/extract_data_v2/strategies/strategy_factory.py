@@ -1,13 +1,13 @@
 # -*- coding: utf-8 -*-
 from typing import Dict, Type
-from ..interfaces.strategy_interface import StrategyInterface
-from ..models.table_config import TableConfig
-from ..models.extraction_config import ExtractionConfig
-from .full_load_strategy import FullLoadStrategy
-from .incremental_strategy import IncrementalStrategy
-from .date_range_strategy import DateRangeStrategy
-from .partitioned_strategy import PartitionedStrategy
-from ..exceptions.custom_exceptions import ConfigurationError
+from interfaces.strategy_interface import StrategyInterface
+from models.table_config import TableConfig
+from models.extraction_config import ExtractionConfig
+from full_load_strategy import FullLoadStrategy
+from incremental_strategy import IncrementalStrategy
+from date_range_strategy import DateRangeStrategy
+from partitioned_strategy import PartitionedStrategy
+from exceptions.custom_exceptions import ConfigurationError
 
 class StrategyFactory:
     """Factory to create appropriate extraction strategies"""

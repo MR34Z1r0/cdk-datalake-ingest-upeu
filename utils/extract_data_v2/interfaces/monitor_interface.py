@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 from abc import ABC, abstractmethod
 from typing import Dict, Any
-from ..models.extraction_result import ExtractionResult
+from models.extraction_result import ExtractionResult
 
 class MonitorInterface(ABC):
     """Interface for all monitoring systems"""

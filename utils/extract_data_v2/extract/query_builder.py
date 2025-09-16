@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 from typing import Optional, Dict, Any
 import re
-from ..models.table_config import TableConfig
-from ..utils.validation_utils import clean_column_name, sanitize_query_parameter
+from models.table_config import TableConfig
+from utils.validation_utils import clean_column_name, sanitize_query_parameter
 
 class QueryBuilder:
     """Build SQL queries based on table configuration"""
@@ -67,7 +67,7 @@ class QueryBuilder:
     def build_date_range_query(self, start_date: str, end_date: str, 
                               date_column: str, date_type: str = None) -> str:
         """Build date range query"""
-        from ..utils.date_utils import format_date_for_db
+        from utils.date_utils import format_date_for_db
         
         columns = self._process_columns()
         

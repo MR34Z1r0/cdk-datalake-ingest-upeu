@@ -1,9 +1,9 @@
 # -*- coding: utf-8 -*-
 from typing import Dict, Any
-from ...interfaces.monitor_interface import MonitorInterface
-from ...models.extraction_result import ExtractionResult
-from ...aje_libs.common.helpers.dynamodb_helper import DynamoDBHelper
-from ...utils.date_utils import get_current_lima_time
+from interfaces.monitor_interface import MonitorInterface
+from models.extraction_result import ExtractionResult
+from aje_libs.common.helpers.dynamodb_helper import DynamoDBHelper
+from utils.date_utils import get_current_lima_time
 import boto3
 
 class DynamoDBMonitor(MonitorInterface):

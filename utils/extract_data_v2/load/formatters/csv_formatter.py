@@ -2,7 +2,7 @@
 import pandas as pd
 import io
 from typing import Dict, Any, Optional
-from ...exceptions.custom_exceptions import LoadError
+from exceptions.custom_exceptions import LoadError
 
 class CSVFormatter:
     """Format data as CSV files"""

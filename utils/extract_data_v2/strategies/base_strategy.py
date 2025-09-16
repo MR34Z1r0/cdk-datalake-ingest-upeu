@@ -1,9 +1,9 @@
 # -*- coding: utf-8 -*-
 from abc import ABC, abstractmethod
 from typing import List, Dict, Any
-from ..models.table_config import TableConfig
-from ..models.extraction_config import ExtractionConfig
-from ..extract.query_builder import QueryBuilder
+from models.table_config import TableConfig
+from models.extraction_config import ExtractionConfig
+from extract.query_builder import QueryBuilder
 
 class BaseStrategy(ABC):
     """Base class for all extraction strategies"""
@@ -65,7 +65,7 @@ class BaseStrategy(ABC):
     
     def _build_s3_path(self) -> str:
         """Build S3 destination path"""
-        from ..utils.date_utils import get_date_parts
+        from utils.date_utils import get_date_parts
         
         year, month, day = get_date_parts()
         

@@ -22,38 +22,38 @@ class StrategyFactory:
     
     @classmethod
     def create(cls, table_config: TableConfig, extraction_config: ExtractionConfig, 
-              extractor=None) -> StrategyInterface:
-        """
-        Create appropriate strategy based on load type
+            extractor=None) -> StrategyInterface:
+        """Create appropriate strategy based on load type"""
+        from aje_libs.common.logger import custom_logger
+        logger = custom_logger(__name__)
         
-        Args:
-            table_config: Table configuration
-            extraction_config: Extraction configuration  
-            extractor: Extractor instance (needed for some strategies)
-            
-        Returns:
-            Configured strategy instance
-            
-        Raises:
-            ConfigurationError: If strategy type is not supported
-        """
         # Determine strategy based on configuration
         strategy_type = cls._determine_strategy_type(table_config, extraction_config)
         
+        logger.info(f"=== STRATEGY FACTORY ===")
+        logger.info(f"Selected strategy type: '{strategy_type}'")
+        logger.info(f"Table: {table_config.stage_table_name}")
+        logger.info(f"Load type: {table_config.load_type}")
+        
         if strategy_type not in cls._strategies:
             available_strategies = ', '.join(cls._strategies.keys())
-            raise ConfigurationError(
-                f"Unsupported strategy type '{strategy_type}'. "
-                f"Available strategies: {available_strategies}"
-            )
+            error_msg = f"Unsupported strategy type '{strategy_type}'. Available strategies: {available_strategies}"
+            logger.error(error_msg)
+            raise ConfigurationError(error_msg)
         
         strategy_class = cls._strategies[strategy_type]
+        logger.info(f"Creating strategy instance: {strategy_class.__name__}")
         
         # Some strategies need the extractor
         if strategy_type == 'partitioned':
-            return strategy_class(table_config, extraction_config, extractor)
+            strategy_instance = strategy_class(table_config, extraction_config, extractor)
         else:
-            return strategy_class(table_config, extraction_config)
+            strategy_instance = strategy_class(table_config, extraction_config)
+        
+        logger.info(f"Strategy instance created successfully")
+        logger.info("=== END STRATEGY FACTORY ===")
+        
+        return strategy_instance
     
     @classmethod
     def _determine_strategy_type(cls, table_config: TableConfig, 
@@ -61,11 +61,7 @@ class StrategyFactory:
         """Determine which strategy to use based on configuration"""
         
         load_type = table_config.load_type.lower().strip()
-        
-        # Debug logging
-        print(f"DEBUG StrategyFactory - load_type: '{load_type}'")
-        print(f"DEBUG StrategyFactory - force_full_load: {extraction_config.force_full_load}")
-        
+         
         # Handle force full load override
         if extraction_config.force_full_load:
             return 'full'
@@ -88,7 +84,6 @@ class StrategyFactory:
         }
         
         determined_strategy = strategy_mapping.get(load_type, 'full')
-        print(f"DEBUG StrategyFactory - determined_strategy: '{determined_strategy}'")
         
         return determined_strategy
     

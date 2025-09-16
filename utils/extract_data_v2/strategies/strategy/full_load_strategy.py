@@ -36,15 +36,49 @@ class FullLoadStrategy(BaseStrategy):
     
     def validate_config(self) -> bool:
         """Validate configuration for full load"""
+        from aje_libs.common.logger import custom_logger
+        logger = custom_logger(__name__)
+        
+        logger.info("=== FULL LOAD STRATEGY VALIDATION ===") 
         # Full load requires minimal configuration
         required_fields = [
-            self.table_config.stage_table_name,
-            self.table_config.source_schema,
-            self.table_config.source_table,
-            self.table_config.columns
+            ('stage_table_name', self.table_config.stage_table_name),
+            ('source_schema', self.table_config.source_schema),
+            ('source_table', self.table_config.source_table),
+            ('columns', self.table_config.columns)
         ]
         
-        return all(field and str(field).strip() for field in required_fields)
+        logger.info("Checking required fields:")
+        
+        validation_errors = []
+        for field_name, field_value in required_fields:
+            logger.info(f"  - {field_name}: '{field_value}' (type: {type(field_value)})")
+            
+            if field_value is None:
+                validation_errors.append(f"{field_name} is None")
+            elif not str(field_value).strip():
+                validation_errors.append(f"{field_name} is empty or whitespace only")
+            else:
+                logger.info(f"    ✅ {field_name} is valid")
+        
+        # Log additional table config info for debugging
+        logger.info("=== ADDITIONAL TABLE CONFIG INFO ===")
+        logger.info(f"load_type: '{self.table_config.load_type}'")
+        logger.info(f"source_table_type: '{self.table_config.source_table_type}'")
+        logger.info(f"id_column: '{self.table_config.id_column}'")
+        logger.info(f"partition_column: '{self.table_config.partition_column}'")
+        logger.info(f"filter_column: '{self.table_config.filter_column}'")
+        
+        if validation_errors:
+            logger.error("❌ VALIDATION FAILED:")
+            for error in validation_errors:
+                logger.error(f"  - {error}")
+            logger.error("=== END VALIDATION ===")
+            return False
+        else:
+            logger.info("✅ ALL VALIDATION CHECKS PASSED")
+            logger.info("=== END VALIDATION ===")
+            return True
     
     def estimate_resources(self) -> Dict[str, Any]:
         """Estimate resources for full load"""

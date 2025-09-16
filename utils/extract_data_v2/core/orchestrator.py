@@ -158,7 +158,6 @@ class DataExtractionOrchestrator:
                 tables_data = CSVConfigLoader.load_from_local(settings.get('TABLES_CSV_S3'))
                 credentials_data = CSVConfigLoader.load_from_local(settings.get('CREDENTIALS_CSV_S3'))
                 columns_data = CSVConfigLoader.load_from_local(settings.get('COLUMNS_CSV_S3'))
-            
             # Find table configuration
             table_row = CSVConfigLoader.find_config_by_criteria(
                 tables_data,

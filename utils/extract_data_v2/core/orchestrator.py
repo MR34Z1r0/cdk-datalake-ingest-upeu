@@ -5,21 +5,21 @@ from datetime import datetime
 from typing import List, Dict, Any, Optional
 import pandas as pd
 
-from ..models.extraction_config import ExtractionConfig
-from ..models.table_config import TableConfig
-from ..models.database_config import DatabaseConfig
-from ..models.extraction_result import ExtractionResult
-from ..interfaces.extractor_interface import ExtractorInterface
-from ..interfaces.loader_interface import LoaderInterface
-from ..interfaces.monitor_interface import MonitorInterface
-from ..interfaces.strategy_interface import StrategyInterface
-from ..extract.extractor_factory import ExtractorFactory
-from ..load.loader_factory import LoaderFactory
-from ..monitoring.monitor_factory import MonitorFactory
-from ..strategies.strategy_factory import StrategyFactory
-from ..utils.csv_loader import CSVConfigLoader
-from ..exceptions.custom_exceptions import *
-from ..config.settings import settings
+from models.extraction_config import ExtractionConfig
+from models.table_config import TableConfig
+from models.database_config import DatabaseConfig
+from models.extraction_result import ExtractionResult
+from interfaces.extractor_interface import ExtractorInterface
+from interfaces.loader_interface import LoaderInterface
+from interfaces.monitor_interface import MonitorInterface
+from interfaces.strategy_interface import StrategyInterface
+from extract.extractor_factory import ExtractorFactory
+from load.loader_factory import LoaderFactory
+from monitoring.monitor_factory import MonitorFactory
+from strategies.strategy_factory import StrategyFactory
+from utils.csv_loader import CSVConfigLoader
+from exceptions.custom_exceptions import *
+from config.settings import settings
 
 class DataExtractionOrchestrator:
     """Main orchestrator for the data extraction process"""
@@ -310,134 +310,62 @@ class DataExtractionOrchestrator:
         files_created = []
         total_records = 0
         
-        def execute_single_query(query_info: Dict[str, Any]) -> tuple:
-            """Execute a single query and return results"""
-            query = query_info['query']
-            thread_id = query_info['thread_id']
-            metadata = query_info['metadata']
-            
-            try:
-                # Get chunking parameters if available
-                chunking_params = metadata.get('chunking_params', {})
-                
-                # Execute query
-                if chunking_params:
-                    # Chunked extraction
-                    chunk_files, chunk_records = self._execute_query_chunked(
-                        query, thread_id, metadata, chunking_params
-                    )
-                else:
-                    # Standard extraction
-                    chunk_files, chunk_records = self._execute_query_standard(
-                        query, thread_id, metadata
-                    )
-                
-                return chunk_files, chunk_records
-                
-            except Exception as e:
-                raise ExtractionError(f"Query execution failed for thread {thread_id}: {e}")
-        
-        # Execute queries in parallel
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            # Submit all query tasks
             future_to_query = {
-                executor.submit(execute_single_query, query_info): query_info 
-                for query_info in queries
+                executor.submit(self._execute_single_query, i, query): query
+                for i, query in enumerate(queries)
             }
             
+            # Process completed tasks
             for future in as_completed(future_to_query):
+                query = future_to_query[future]
                 try:
-                    chunk_files, chunk_records = future.result()
-                    files_created.extend(chunk_files)
-                    total_records += chunk_records
+                    file_path, record_count = future.result()
+                    if file_path:
+                        files_created.append(file_path)
+                    total_records += record_count
                 except Exception as e:
-                    # Cancel remaining futures and re-raise
-                    for f in future_to_query:
-                        f.cancel()
-                    raise e
+                    raise ExtractionError(f"Failed to execute query: {e}")
+        
+        # Handle empty result case
+        if total_records == 0:
+            files_created, total_records = self._handle_empty_result()
         
         return files_created, total_records
     
-    def _execute_query_standard(self, query: str, thread_id: int, 
-                              metadata: Dict[str, Any]) -> tuple:
-        """Execute a single query without chunking"""
+    def _execute_single_query(self, thread_id: int, query_metadata: Dict[str, Any]) -> tuple:
+        """Execute a single query and load the data"""
+        query = query_metadata['query']
+        metadata = query_metadata.get('metadata', {})
         
-        # Execute query
-        df = self.extractor.execute_query(query)
+        # Extract data
+        df = self.extractor.extract_data(query, metadata.get('chunk_size', self.extraction_config.chunk_size))
         
-        # Remove duplicates
-        original_count = len(df)
-        df = df.drop_duplicates()
-        records_count = len(df)
+        if df is None or df.empty:
+            return None, 0
         
-        # Handle empty results
-        if records_count == 0:
-            # Create empty file with proper column structure
-            if df.columns.empty or all(col.startswith('Unnamed') for col in df.columns):
-                # Extract columns from query if DataFrame doesn't have proper columns
-                from ..extract.query_builder import QueryBuilder
-                query_builder = QueryBuilder(self.table_config)
-                columns = query_builder.extract_columns_from_query(query)
-                df = pd.DataFrame(columns=columns)
-        
-        # Save to destination
+        # Load data
         destination_path = metadata.get('destination_path', self._build_destination_path())
-        file_path = self.loader.load_dataframe(
-            df, 
-            destination_path, 
-            thread_id=thread_id
-        )
+        file_path = self.loader.load_dataframe(df, destination_path, thread_id=thread_id)
         
-        return [file_path], records_count
+        return file_path, len(df)
     
-    def _execute_query_chunked(self, query: str, thread_id: int, 
-                             metadata: Dict[str, Any], chunking_params: Dict[str, Any]) -> tuple:
-        """Execute a query with chunking"""
-        
-        chunk_size = chunking_params.get('chunk_size', self.extraction_config.chunk_size)
-        order_by = chunking_params.get('order_by')
-        
-        if not order_by:
-            raise ConfigurationError("order_by parameter required for chunked extraction")
-        
+    def _handle_empty_result(self) -> tuple:
+        """Handle case where no data was extracted"""
         files_created = []
         total_records = 0
-        chunk_index = 0
         
-        # Execute chunked query
-        for df_chunk in self.extractor.execute_query_chunked(query, chunk_size, order_by):
-            # Remove duplicates
-            df_chunk = df_chunk.drop_duplicates()
-            chunk_records = len(df_chunk)
-            
-            if chunk_records == 0:
-                continue
-            
-            # Save chunk
-            destination_path = metadata.get('destination_path', self._build_destination_path())
-            file_path = self.loader.load_dataframe(
-                df_chunk,
-                destination_path,
-                thread_id=thread_id,
-                chunk_id=chunk_index
-            )
-            
-            files_created.append(file_path)
-            total_records += chunk_records
-            chunk_index += 1
-        
-        # Handle case where no chunks were processed
-        if not files_created:
-            # Create empty file
-            from ..extract.query_builder import QueryBuilder
-            query_builder = QueryBuilder(self.table_config)
-            columns = query_builder.extract_columns_from_query(query)
+        # Create empty file with schema if configured
+        if self.table_config and self.table_config.columns:
+            columns = [col.strip() for col in self.table_config.columns.split(',')]
             empty_df = pd.DataFrame(columns=columns)
             
-            destination_path = metadata.get('destination_path', self._build_destination_path())
+            destination_path = self._build_destination_path()
             file_path = self.loader.load_dataframe(
                 empty_df,
                 destination_path,
-                thread_id=thread_id
+                thread_id=0
             )
             files_created.append(file_path)
         
@@ -445,7 +373,7 @@ class DataExtractionOrchestrator:
     
     def _build_destination_path(self) -> str:
         """Build destination path for files"""
-        from ..utils.date_utils import get_date_parts
+        from utils.date_utils import get_date_parts
         
         year, month, day = get_date_parts()
         

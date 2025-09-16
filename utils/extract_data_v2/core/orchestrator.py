@@ -182,13 +182,10 @@ class DataExtractionOrchestrator:
     def _build_table_config(self, table_row: Dict[str, Any]) -> TableConfig:
         """Build TableConfig from CSV row"""
         
-        # Apply load type logic if not explicitly set
+        # Apply load type logic - default to 'full' if not explicitly set
         load_type = table_row.get('LOAD_TYPE', '').strip()
         if not load_type:
-            if table_row.get('SOURCE_TABLE_TYPE', '') == 't':
-                load_type = 'incremental'
-            else:
-                load_type = 'full'
+            load_type = 'full'
         
         # Apply force full load override
         if self.extraction_config.force_full_load and load_type == 'incremental':
@@ -344,17 +341,39 @@ class DataExtractionOrchestrator:
         query = query_metadata['query']
         metadata = query_metadata.get('metadata', {})
         
-        # Extract data
-        df = self.extractor.extract_data(query, metadata.get('chunk_size', self.extraction_config.chunk_size))
+        files_created = []
+        total_records = 0
         
-        if df is None or df.empty:
-            return None, 0
-        
-        # Load data
-        destination_path = metadata.get('destination_path', self._build_destination_path())
-        file_path = self.loader.load_dataframe(df, destination_path, thread_id=thread_id)
-        
-        return file_path, len(df)
+        try:
+            # Extract data (esto devuelve un Iterator[pd.DataFrame])
+            chunk_size = metadata.get('chunk_size', self.extraction_config.chunk_size)
+            data_iterator = self.extractor.extract_data(query, chunk_size)
+            
+            # Procesar cada chunk del generador
+            destination_path = metadata.get('destination_path', self._build_destination_path())
+            
+            chunk_count = 0
+            for chunk_df in data_iterator:
+                if chunk_df is not None and not chunk_df.empty:
+                    # Load data chunk
+                    file_path = self.loader.load_dataframe(
+                        chunk_df, 
+                        destination_path, 
+                        thread_id=f"{thread_id}_{chunk_count}"
+                    )
+                    files_created.append(file_path)
+                    total_records += len(chunk_df)
+                    chunk_count += 1
+            
+            # Si no se procesaron chunks, retornar valores por defecto
+            if chunk_count == 0:
+                return None, 0
+            
+            # Si hay múltiples archivos, retornar el primero como representativo
+            return files_created[0] if files_created else None, total_records
+            
+        except Exception as e:
+            raise ExtractionError(f"Failed to execute query for thread {thread_id}: {e}")
     
     def _handle_empty_result(self) -> tuple:
         """Handle case where no data was extracted"""

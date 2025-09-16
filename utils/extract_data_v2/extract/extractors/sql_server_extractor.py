@@ -101,6 +101,33 @@ class SQLServerExtractor(ExtractorInterface):
         except Exception as e:
             raise ExtractionError(f"Failed to execute chunked query: {e}")
     
+    def extract_data(self, query: str, chunk_size: int = None, order_by: str = None, params: Optional[Tuple] = None) -> Iterator[pd.DataFrame]:
+        """
+        Extract data using query - main extraction method
+        
+        Args:
+            query: SQL query to execute
+            chunk_size: Size of chunks for pagination (optional)
+            order_by: Column to order by for chunked extraction (optional)
+            params: Query parameters (optional)
+        
+        Returns:
+            Iterator of DataFrames
+        """
+        try:
+            if chunk_size and order_by:
+                # Use chunked extraction
+                for chunk_df in self.execute_query_chunked(query, chunk_size, order_by, params):
+                    yield chunk_df
+            else:
+                # Execute as single query
+                df = self.execute_query(query, params)
+                if not df.empty:
+                    yield df
+                    
+        except Exception as e:
+            raise ExtractionError(f"Failed to extract data: {e}")
+    
     def get_min_max_values(self, table: str, column: str, 
                           where_clause: Optional[str] = None) -> Tuple[Optional[int], Optional[int]]:
         """Get min and max values for a column"""

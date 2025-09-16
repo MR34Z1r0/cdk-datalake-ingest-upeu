@@ -57,23 +57,29 @@ class StrategyFactory:
     
     @classmethod
     def _determine_strategy_type(cls, table_config: TableConfig, 
-                               extraction_config: ExtractionConfig) -> str:
+                            extraction_config: ExtractionConfig) -> str:
         """Determine which strategy to use based on configuration"""
         
         load_type = table_config.load_type.lower().strip()
         
+        # Debug logging
+        print(f"DEBUG StrategyFactory - load_type: '{load_type}'")
+        print(f"DEBUG StrategyFactory - force_full_load: {extraction_config.force_full_load}")
+        
         # Handle force full load override
-        if extraction_config.force_full_load and load_type == 'incremental':
-            load_type = 'full'
+        if extraction_config.force_full_load:
+            return 'full'
         
-        # Determine if partitioned strategy should be used for full loads
-        if (load_type == 'full' and 
-            table_config.source_table_type == 't' and
-            table_config.partition_column and 
-            table_config.partition_column.strip()):
-            return 'partitioned'
+        # Si load_type está explícitamente configurado como 'full', usarlo
+        if load_type == 'full':
+            # Determine if partitioned strategy should be used for full loads
+            if (table_config.source_table_type == 't' and
+                table_config.partition_column and 
+                table_config.partition_column.strip()):
+                return 'partitioned'
+            return 'full'
         
-        # Map load types to strategies
+        # Para otros tipos
         strategy_mapping = {
             'full': 'full',
             'incremental': 'incremental', 
@@ -81,7 +87,10 @@ class StrategyFactory:
             'date_range': 'date_range'
         }
         
-        return strategy_mapping.get(load_type, 'full')
+        determined_strategy = strategy_mapping.get(load_type, 'full')
+        print(f"DEBUG StrategyFactory - determined_strategy: '{determined_strategy}'")
+        
+        return determined_strategy
     
     @classmethod
     def register_strategy(cls, strategy_type: str, strategy_class: Type[StrategyInterface]):

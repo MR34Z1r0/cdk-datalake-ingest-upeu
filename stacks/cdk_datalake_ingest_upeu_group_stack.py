@@ -22,7 +22,7 @@ from aje_cdk_libs.models.configs import GlueJobConfig, StepFunctionConfig, Lambd
 from constants.paths import Paths
 from constants.layers import Layers
 
-class CdkDatalakeIngestBigmagicGroupStack(Stack):
+class CdkDatalakeIngestUpeuGroupStack(Stack):
     def __init__(self, scope: Construct, construct_id: str, project_config, process_id, endpoint_name, base_stack_outputs, shared_table_info=None, shared_job_registry=None, instance=None, **kwargs):
         super().__init__(scope, construct_id, **kwargs)
         self.PROJECT_CONFIG = project_config
@@ -517,7 +517,7 @@ class CdkDatalakeIngestBigmagicGroupStack(Stack):
             
             # Define the choice conditions and workflow branches
             definition = run_extract_choice.when(
-                sfn.Condition.boolean_equals("$.run_extract", True),
+                sfn.Condition.boolean_equals("$.run_extract", False), #False to test transform only
                 extract_workflow
             ).otherwise(
                 transform_only_workflow

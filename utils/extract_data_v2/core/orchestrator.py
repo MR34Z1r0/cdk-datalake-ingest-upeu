@@ -1,0 +1,497 @@
+# -*- coding: utf-8 -*-
+import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from datetime import datetime
+from typing import List, Dict, Any, Optional
+import pandas as pd
+
+from ..models.extraction_config import ExtractionConfig
+from ..models.table_config import TableConfig
+from ..models.database_config import DatabaseConfig
+from ..models.extraction_result import ExtractionResult
+from ..interfaces.extractor_interface import ExtractorInterface
+from ..interfaces.loader_interface import LoaderInterface
+from ..interfaces.monitor_interface import MonitorInterface
+from ..interfaces.strategy_interface import StrategyInterface
+from ..extract.extractor_factory import ExtractorFactory
+from ..load.loader_factory import LoaderFactory
+from ..monitoring.monitor_factory import MonitorFactory
+from ..strategies.strategy_factory import StrategyFactory
+from ..utils.csv_loader import CSVConfigLoader
+from ..exceptions.custom_exceptions import *
+from ..config.settings import settings
+
+class DataExtractionOrchestrator:
+    """Main orchestrator for the data extraction process"""
+    
+    def __init__(self, extraction_config: ExtractionConfig):
+        self.extraction_config = extraction_config
+        self.table_config: Optional[TableConfig] = None
+        self.database_config: Optional[DatabaseConfig] = None
+        
+        # Components
+        self.extractor: Optional[ExtractorInterface] = None
+        self.loader: Optional[LoaderInterface] = None
+        self.monitor: Optional[MonitorInterface] = None
+        self.strategy: Optional[StrategyInterface] = None
+        
+        # Results tracking
+        self.extraction_result: Optional[ExtractionResult] = None
+        
+    def execute(self) -> ExtractionResult:
+        """Execute the complete data extraction process"""
+        start_time = datetime.now()
+        
+        try:
+            # Initialize all components
+            self._initialize_components()
+            
+            # Log start
+            self.monitor.log_start(
+                self.extraction_config.table_name,
+                self.strategy.get_strategy_name(),
+                self._build_metadata()
+            )
+            
+            # Validate configuration
+            self._validate_configuration()
+            
+            # Execute extraction strategy
+            extraction_result = self._execute_extraction_strategy()
+            
+            # Log success
+            self.monitor.log_success(extraction_result)
+            
+            return extraction_result
+            
+        except Exception as e:
+            error_message = f"Extraction failed: {str(e)}"
+            
+            # Log error
+            if self.monitor:
+                self.monitor.log_error(
+                    self.extraction_config.table_name,
+                    error_message,
+                    self._build_metadata()
+                )
+                
+                # Send notification
+                self.monitor.send_notification(
+                    f"Failed table: {self.extraction_config.table_name}\n"
+                    f"Step: extraction job\n"
+                    f"Error: {error_message}",
+                    is_error=True
+                )
+            
+            # Create error result
+            end_time = datetime.now()
+            execution_time = (end_time - start_time).total_seconds()
+            
+            error_result = ExtractionResult(
+                success=False,
+                table_name=self.extraction_config.table_name,
+                records_extracted=0,
+                files_created=[],
+                execution_time_seconds=execution_time,
+                strategy_used=self.strategy.get_strategy_name() if self.strategy else "unknown",
+                error_message=error_message,
+                start_time=start_time,
+                end_time=end_time
+            )
+            
+            raise ExtractionError(error_message) from e
+            
+        finally:
+            # Cleanup resources
+            self._cleanup()
+    
+    def _initialize_components(self):
+        """Initialize all components needed for extraction"""
+        
+        # Load configurations
+        self._load_configurations()
+        
+        # Create extractor
+        self.extractor = ExtractorFactory.create(
+            db_type=self.database_config.db_type,
+            config=self.database_config
+        )
+        
+        # Test database connection
+        if not self.extractor.test_connection():
+            raise ConnectionError("Failed to connect to database")
+        
+        # Create loader
+        loader_config = self._build_loader_config()
+        self.loader = LoaderFactory.create(
+            loader_type=settings.get('LOADER_TYPE', 's3'),
+            output_format=self.extraction_config.output_format,
+            **loader_config
+        )
+        
+        # Create monitor
+        monitor_config = self._build_monitor_config()
+        self.monitor = MonitorFactory.create(
+            monitor_type=settings.get('MONITOR_TYPE', 'dynamodb'),
+            **monitor_config
+        )
+        
+        # Create strategy
+        self.strategy = StrategyFactory.create(
+            table_config=self.table_config,
+            extraction_config=self.extraction_config,
+            extractor=self.extractor
+        )
+    
+    def _load_configurations(self):
+        """Load table and database configurations from CSV files"""
+        try:
+            # Determine if using S3 or local files
+            use_s3 = settings.is_aws_s3
+            
+            # Load CSV configurations
+            if use_s3:
+                tables_data = CSVConfigLoader.load_from_s3(settings.get('TABLES_CSV_S3'))
+                credentials_data = CSVConfigLoader.load_from_s3(settings.get('CREDENTIALS_CSV_S3'))
+                columns_data = CSVConfigLoader.load_from_s3(settings.get('COLUMNS_CSV_S3'))
+            else:
+                tables_data = CSVConfigLoader.load_from_local(settings.get('TABLES_CSV_S3'))
+                credentials_data = CSVConfigLoader.load_from_local(settings.get('CREDENTIALS_CSV_S3'))
+                columns_data = CSVConfigLoader.load_from_local(settings.get('COLUMNS_CSV_S3'))
+            
+            # Find table configuration
+            table_row = CSVConfigLoader.find_config_by_criteria(
+                tables_data,
+                STAGE_TABLE_NAME=self.extraction_config.table_name
+            )
+            
+            # Find database configuration
+            db_row = CSVConfigLoader.find_config_by_criteria(
+                credentials_data,
+                ENDPOINT_NAME=self.extraction_config.endpoint_name,
+                ENV=self.extraction_config.environment
+            )
+            
+            # Build configurations
+            self.table_config = self._build_table_config(table_row)
+            self.database_config = self._build_database_config(db_row)
+            
+        except Exception as e:
+            raise ConfigurationError(f"Failed to load configurations: {e}")
+    
+    def _build_table_config(self, table_row: Dict[str, Any]) -> TableConfig:
+        """Build TableConfig from CSV row"""
+        
+        # Apply load type logic if not explicitly set
+        load_type = table_row.get('LOAD_TYPE', '').strip()
+        if not load_type:
+            if table_row.get('SOURCE_TABLE_TYPE', '') == 't':
+                load_type = 'incremental'
+            else:
+                load_type = 'full'
+        
+        # Apply force full load override
+        if self.extraction_config.force_full_load and load_type == 'incremental':
+            load_type = 'full'
+        
+        return TableConfig(
+            stage_table_name=table_row.get('STAGE_TABLE_NAME', ''),
+            source_schema=table_row.get('SOURCE_SCHEMA', ''),
+            source_table=table_row.get('SOURCE_TABLE', ''),
+            columns=self._process_columns_field(table_row.get('COLUMNS', '')),
+            load_type=load_type,
+            source_table_type=table_row.get('SOURCE_TABLE_TYPE', ''),
+            id_column=table_row.get('ID_COLUMN'),
+            partition_column=table_row.get('PARTITION_COLUMN'),
+            filter_exp=table_row.get('FILTER_EXP'),
+            filter_column=table_row.get('FILTER_COLUMN'),
+            filter_data_type=table_row.get('FILTER_DATA_TYPE'),
+            join_expr=table_row.get('JOIN_EXPR'),
+            delay_incremental_ini=table_row.get('DELAY_INCREMENTAL_INI'),
+            start_value=table_row.get('START_VALUE'),
+            end_value=table_row.get('END_VALUE')
+        )
+    
+    def _build_database_config(self, db_row: Dict[str, Any]) -> DatabaseConfig:
+        """Build DatabaseConfig from CSV row"""
+        return DatabaseConfig(
+            endpoint_name=db_row.get('ENDPOINT_NAME', ''),
+            db_type=db_row.get('BD_TYPE', ''),
+            server=db_row.get('SRC_SERVER_NAME', ''),
+            database=db_row.get('SRC_DB_NAME', ''),
+            username=db_row.get('SRC_DB_USERNAME', ''),
+            secret_key=db_row.get('SRC_DB_SECRET', ''),
+            port=int(db_row.get('DB_PORT_NUMBER')) if db_row.get('DB_PORT_NUMBER') else None
+        )
+    
+    def _process_columns_field(self, columns_str: str) -> str:
+        """Process columns field to handle SQL Server identifier issues"""
+        if not columns_str or columns_str.strip() == '':
+            return columns_str
+            
+        # Clean problematic double quotes
+        clean_columns = columns_str.strip()
+        
+        # Remove wrapping quotes or all quotes
+        double_quote_count = clean_columns.count('"')
+        if double_quote_count > 0:
+            if clean_columns.startswith('"') and clean_columns.endswith('"') and double_quote_count == 2:
+                clean_columns = clean_columns[1:-1]
+            else:
+                clean_columns = clean_columns.replace('"', '')
+        
+        return clean_columns
+    
+    def _build_loader_config(self) -> Dict[str, Any]:
+        """Build loader configuration"""
+        config = {}
+        
+        if settings.get('LOADER_TYPE', 's3') == 's3':
+            config['bucket_name'] = settings.get('S3_RAW_BUCKET')
+            config['region'] = settings.get('REGION')
+        
+        return config
+    
+    def _build_monitor_config(self) -> Dict[str, Any]:
+        """Build monitor configuration"""
+        config = {}
+        
+        if settings.get('MONITOR_TYPE', 'dynamodb') == 'dynamodb':
+            config['table_name'] = settings.get('DYNAMO_LOGS_TABLE')
+            config['project_name'] = self.extraction_config.project_name
+            config['sns_topic_arn'] = settings.get('TOPIC_ARN')
+        
+        return config
+    
+    def _validate_configuration(self):
+        """Validate all configurations"""
+        if not self.strategy.validate_config():
+            raise ConfigurationError("Invalid strategy configuration")
+    
+    def _execute_extraction_strategy(self) -> ExtractionResult:
+        """Execute the extraction strategy"""
+        start_time = datetime.now()
+        
+        # Clear existing data if needed
+        destination_path = self._build_destination_path()
+        self.loader.delete_existing(destination_path)
+        
+        # Generate queries based on strategy
+        queries = self.strategy.generate_queries()
+        
+        if not queries:
+            raise ExtractionError("No queries generated by strategy")
+        
+        # Execute queries with controlled concurrency
+        files_created, total_records = self._execute_queries_parallel(queries)
+        
+        end_time = datetime.now()
+        execution_time = (end_time - start_time).total_seconds()
+        
+        # Create result
+        result = ExtractionResult(
+            success=True,
+            table_name=self.extraction_config.table_name,
+            records_extracted=total_records,
+            files_created=files_created,
+            execution_time_seconds=execution_time,
+            strategy_used=self.strategy.get_strategy_name(),
+            metadata=self._build_metadata(),
+            start_time=start_time,
+            end_time=end_time
+        )
+        
+        self.extraction_result = result
+        return result
+    
+    def _execute_queries_parallel(self, queries: List[Dict[str, Any]]) -> tuple:
+        """Execute queries with controlled parallel processing"""
+        max_workers = min(self.extraction_config.max_threads, len(queries))
+        files_created = []
+        total_records = 0
+        
+        def execute_single_query(query_info: Dict[str, Any]) -> tuple:
+            """Execute a single query and return results"""
+            query = query_info['query']
+            thread_id = query_info['thread_id']
+            metadata = query_info['metadata']
+            
+            try:
+                # Get chunking parameters if available
+                chunking_params = metadata.get('chunking_params', {})
+                
+                # Execute query
+                if chunking_params:
+                    # Chunked extraction
+                    chunk_files, chunk_records = self._execute_query_chunked(
+                        query, thread_id, metadata, chunking_params
+                    )
+                else:
+                    # Standard extraction
+                    chunk_files, chunk_records = self._execute_query_standard(
+                        query, thread_id, metadata
+                    )
+                
+                return chunk_files, chunk_records
+                
+            except Exception as e:
+                raise ExtractionError(f"Query execution failed for thread {thread_id}: {e}")
+        
+        # Execute queries in parallel
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            future_to_query = {
+                executor.submit(execute_single_query, query_info): query_info 
+                for query_info in queries
+            }
+            
+            for future in as_completed(future_to_query):
+                try:
+                    chunk_files, chunk_records = future.result()
+                    files_created.extend(chunk_files)
+                    total_records += chunk_records
+                except Exception as e:
+                    # Cancel remaining futures and re-raise
+                    for f in future_to_query:
+                        f.cancel()
+                    raise e
+        
+        return files_created, total_records
+    
+    def _execute_query_standard(self, query: str, thread_id: int, 
+                              metadata: Dict[str, Any]) -> tuple:
+        """Execute a single query without chunking"""
+        
+        # Execute query
+        df = self.extractor.execute_query(query)
+        
+        # Remove duplicates
+        original_count = len(df)
+        df = df.drop_duplicates()
+        records_count = len(df)
+        
+        # Handle empty results
+        if records_count == 0:
+            # Create empty file with proper column structure
+            if df.columns.empty or all(col.startswith('Unnamed') for col in df.columns):
+                # Extract columns from query if DataFrame doesn't have proper columns
+                from ..extract.query_builder import QueryBuilder
+                query_builder = QueryBuilder(self.table_config)
+                columns = query_builder.extract_columns_from_query(query)
+                df = pd.DataFrame(columns=columns)
+        
+        # Save to destination
+        destination_path = metadata.get('destination_path', self._build_destination_path())
+        file_path = self.loader.load_dataframe(
+            df, 
+            destination_path, 
+            thread_id=thread_id
+        )
+        
+        return [file_path], records_count
+    
+    def _execute_query_chunked(self, query: str, thread_id: int, 
+                             metadata: Dict[str, Any], chunking_params: Dict[str, Any]) -> tuple:
+        """Execute a query with chunking"""
+        
+        chunk_size = chunking_params.get('chunk_size', self.extraction_config.chunk_size)
+        order_by = chunking_params.get('order_by')
+        
+        if not order_by:
+            raise ConfigurationError("order_by parameter required for chunked extraction")
+        
+        files_created = []
+        total_records = 0
+        chunk_index = 0
+        
+        # Execute chunked query
+        for df_chunk in self.extractor.execute_query_chunked(query, chunk_size, order_by):
+            # Remove duplicates
+            df_chunk = df_chunk.drop_duplicates()
+            chunk_records = len(df_chunk)
+            
+            if chunk_records == 0:
+                continue
+            
+            # Save chunk
+            destination_path = metadata.get('destination_path', self._build_destination_path())
+            file_path = self.loader.load_dataframe(
+                df_chunk,
+                destination_path,
+                thread_id=thread_id,
+                chunk_id=chunk_index
+            )
+            
+            files_created.append(file_path)
+            total_records += chunk_records
+            chunk_index += 1
+        
+        # Handle case where no chunks were processed
+        if not files_created:
+            # Create empty file
+            from ..extract.query_builder import QueryBuilder
+            query_builder = QueryBuilder(self.table_config)
+            columns = query_builder.extract_columns_from_query(query)
+            empty_df = pd.DataFrame(columns=columns)
+            
+            destination_path = metadata.get('destination_path', self._build_destination_path())
+            file_path = self.loader.load_dataframe(
+                empty_df,
+                destination_path,
+                thread_id=thread_id
+            )
+            files_created.append(file_path)
+        
+        return files_created, total_records
+    
+    def _build_destination_path(self) -> str:
+        """Build destination path for files"""
+        from ..utils.date_utils import get_date_parts
+        
+        year, month, day = get_date_parts()
+        
+        # Get clean table name
+        clean_table_name = self._get_clean_table_name()
+        
+        return f"{self.extraction_config.team}/{self.extraction_config.data_source}/{self.extraction_config.endpoint_name}/{clean_table_name}/year={year}/month={month}/day={day}/"
+    
+    def _get_clean_table_name(self) -> str:
+        """Extract clean table name from SOURCE_TABLE, removing alias after space"""
+        if self.table_config and self.table_config.source_table:
+            source_table = self.table_config.source_table
+        else:
+            source_table = self.extraction_config.table_name
+        
+        # Split by space and take only the first part (table name)
+        clean_name = source_table.split()[0] if source_table and ' ' in source_table else source_table
+        return clean_name
+    
+    def _build_metadata(self) -> Dict[str, Any]:
+        """Build metadata for logging"""
+        metadata = {
+            'project_name': self.extraction_config.project_name,
+            'team': self.extraction_config.team,
+            'data_source': self.extraction_config.data_source,
+            'endpoint_name': self.extraction_config.endpoint_name,
+            'environment': self.extraction_config.environment,
+            'table_name': self.extraction_config.table_name
+        }
+        
+        if self.database_config:
+            metadata.update({
+                'server': self.database_config.server,
+                'username': self.database_config.username,
+                'db_type': self.database_config.db_type
+            })
+        
+        if self.strategy:
+            metadata['strategy'] = self.strategy.get_strategy_name()
+        
+        return metadata
+    
+    def _cleanup(self):
+        """Cleanup resources"""
+        if self.extractor:
+            try:
+                self.extractor.close()
+            except Exception:
+                pass

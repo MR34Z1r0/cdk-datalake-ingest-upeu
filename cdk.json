@@ -44,7 +44,9 @@
             "landing": "sofia-dev-datalake-509399624591-us-east-1-landing-s3",
             "raw": "sofia-dev-datalake-509399624591-us-east-1-raw-s3",
             "stage": "sofia-dev-datalake-509399624591-us-east-1-stage-s3",
-            "analytics": "sofia-dev-datalake-509399624591-us-east-1-analytics-s3"
+            "analytics": "sofia-dev-datalake-509399624591-us-east-1-analytics-s3",
+            "external": "sofia-dev-datalake-509399624591-us-east-1-external-s3",
+            "athena": "sofia-dev-datalake-509399624591-us-east-1-athena-s3"
           },
           "dynamodb_tables":{
             "configuration": "sofia-dev-datalake-configuration-ddb",
@@ -77,7 +79,9 @@
             "landing": "sofia-prod-datalake-509399624591-us-east-2-landing-s3",
             "raw": "sofia-prod-datalake-509399624591-us-east-2-raw-s3",
             "stage": "sofia-prod-datalake-509399624591-us-east-2-stage-s3",
-            "analytics": "sofia-prod-datalake-509399624591-us-east-2-analytics-s3"
+            "analytics": "sofia-prod-datalake-509399624591-us-east-2-analytics-s3",
+            "external": "sofia-prod-datalake-509399624591-us-east-2-external-s3",
+            "athena": "sofia-prod-datalake-509399624591-us-east-2-athena-s3"
           },
           "dynamodb_tables":{
             "configuration": "sofia-prod-datalake-configuration-ddb",

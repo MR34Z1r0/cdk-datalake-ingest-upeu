@@ -20,7 +20,7 @@ from constants.paths import Paths
 import json
 
 
-class CdkDatalakeIngestBigmagicInstanceStack(Stack):
+class CdkDatalakeIngestUpeuInstanceStack(Stack):
     
     def __init__(self, scope: Construct, construct_id: str, project_config, 
                  instance_name: str, endpoint_names: List[str], base_stack_outputs: Dict[str, str],
@@ -543,8 +543,8 @@ class CdkDatalakeIngestBigmagicInstanceStack(Stack):
                             resources=[
                                 f"arn:aws:states:{self.PROJECT_CONFIG.region_name}:{self.PROJECT_CONFIG.account_id}:stateMachine:{self.PROJECT_CONFIG.enterprise}-{self.PROJECT_CONFIG.environment.value.lower()}-{self.PROJECT_CONFIG.project_name}-workflow_extract_{self.PROJECT_CONFIG.app_config['datasource'].lower()}_*",
                                 f"arn:aws:states:{self.PROJECT_CONFIG.region_name}:{self.PROJECT_CONFIG.account_id}:execution:{self.PROJECT_CONFIG.enterprise}-{self.PROJECT_CONFIG.environment.value.lower()}-{self.PROJECT_CONFIG.project_name}-workflow_extract_{self.PROJECT_CONFIG.app_config['datasource'].lower()}_*",
-                                f"arn:aws:states:{self.PROJECT_CONFIG.region_name}:{self.PROJECT_CONFIG.account_id}:stateMachine:CdkDatalakeIngestBigmagicGroupStack-*",
-                                f"arn:aws:states:{self.PROJECT_CONFIG.region_name}:{self.PROJECT_CONFIG.account_id}:execution:CdkDatalakeIngestBigmagicGroupStack-*"
+                                f"arn:aws:states:{self.PROJECT_CONFIG.region_name}:{self.PROJECT_CONFIG.account_id}:stateMachine:CdkDatalakeIngestUpeuGroupStack-*",
+                                f"arn:aws:states:{self.PROJECT_CONFIG.region_name}:{self.PROJECT_CONFIG.account_id}:execution:CdkDatalakeIngestUpeuGroupStack-*"
                             ]
                         )
                     ]

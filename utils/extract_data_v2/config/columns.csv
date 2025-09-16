@@ -1,0 +1,695 @@
+COLUMN_NAME;COLUMN_ID;IS_FILTER_DATE;IS_ID;IS_ORDER_BY;IS_PARTITION;NEW_DATA_TYPE;TABLE_NAME;TRANSFORMATION
+Id;1;;T;;;double;ANIOACADEMICO;Id
+Nombre;2;;;;;string;ANIOACADEMICO;fn_transform_ClearString(Nombre)
+FechaInicio;3;;;;;timestamp;ANIOACADEMICO;fn_transform_DatetimeMagic(FechaInicio,NULL,yyyy-MM-dd HH:mm:ss,1900-01-01 00:00:01)
+FechaFin;4;;;;;timestamp;ANIOACADEMICO;fn_transform_DatetimeMagic(FechaFin,NULL,yyyy-MM-dd HH:mm:ss,1900-01-01 00:00:01)
+NroResolucion;5;;;;;string;ANIOACADEMICO;fn_transform_ClearString(NroResolucion)
+Denominacion;6;;;;;string;ANIOACADEMICO;fn_transform_ClearString(Denominacion)
+EstadoId;7;;;;;double;ANIOACADEMICO;EstadoId
+FechaCreacion;8;;;;;timestamp;ANIOACADEMICO;fn_transform_DatetimeMagic(FechaCreacion,NULL,yyyy-MM-dd HH:mm:ss,1900-01-01 00:00:01)
+FechaActualizacion;9;;;T;;timestamp;ANIOACADEMICO;fn_transform_DatetimeMagic(FechaActualizacion,NULL,yyyy-MM-dd HH:mm:ss,1900-01-01 00:00:01)
+UsuarioCreacionId;10;;;;;double;ANIOACADEMICO;UsuarioCreacionId
+UsuarioActualizacionId;11;;;;;double;ANIOACADEMICO;UsuarioActualizacionId
+GeoreferenciaId;12;;;;;double;ANIOACADEMICO;GeoreferenciaId
+OrganigramaId;13;;;;;double;ANIOACADEMICO;OrganigramaId
+TipoId;14;;;;;double;ANIOACADEMICO;TipoId
+EmpresaId;15;;;;;double;ANIOACADEMICO;EmpresaId
+Anio;16;;;;;double;ANIOACADEMICO;Anio
+TipoUni;17;;;;;string;ANIOACADEMICO;fn_transform_ClearString(TipoUni)
+CodigoExternoId;18;;;;;string;ANIOACADEMICO;fn_transform_ClearString(CodigoExternoId)
+Id;1;;T;;;double;CA_CARGA_ACADEMICA;Id
+EstadoId;2;;;;;double;CA_CARGA_ACADEMICA;EstadoId
+IdAnioAcademico;3;;;;;double;CA_CARGA_ACADEMICA;IdAnioAcademico
+IdPeriodoAcad;4;;;;;double;CA_CARGA_ACADEMICA;IdPeriodoAcad
+IdAula;5;;;;;double;CA_CARGA_ACADEMICA;IdAula
+IdGrupo;6;;;;;double;CA_CARGA_ACADEMICA;IdGrupo
+IdPlanEstudio;7;;;;;double;CA_CARGA_ACADEMICA;IdPlanEstudio
+IdPlanEstudioVersion;8;;;;;double;CA_CARGA_ACADEMICA;IdPlanEstudioVersion
+CapacidadVacante;9;;;;;string;CA_CARGA_ACADEMICA;fn_transform_ClearString(CapacidadVacante)
+IdUsuarioCreacion;10;;;;;double;CA_CARGA_ACADEMICA;IdUsuarioCreacion
+IdUsuarioActualizacion;11;;;;;double;CA_CARGA_ACADEMICA;IdUsuarioActualizacion
+FechaCreacion;12;;;;;timestamp;CA_CARGA_ACADEMICA;fn_transform_DatetimeMagic(FechaCreacion,NULL,yyyy-MM-dd HH:mm:ss,1900-01-01 00:00:01)
+FechaActualizacion;13;;;T;;timestamp;CA_CARGA_ACADEMICA;fn_transform_DatetimeMagic(FechaActualizacion,NULL,yyyy-MM-dd HH:mm:ss,1900-01-01 00:00:01)
+CapacidadVacanteD;15;;;;;double;CA_CARGA_ACADEMICA;CapacidadVacanteD
+IdEmpleadoTutor;16;;;;;double;CA_CARGA_ACADEMICA;IdEmpleadoTutor
+CapacidadAula;17;;;;;double;CA_CARGA_ACADEMICA;CapacidadAula
+CargaAcademicaCalendarioPeriodoId;1;;T;;;double;CA_CARGA_ACADEMICA_CALENDARIO_PERIODO;CargaAcademicaCalendarioPeriodoId
+CargaAcademicaId;2;;;;;double;CA_CARGA_ACADEMICA_CALENDARIO_PERIODO;CargaAcademicaId
+CalendarioPeriodoId;3;;;;;double;CA_CARGA_ACADEMICA_CALENDARIO_PERIODO;CalendarioPeriodoId
+Path;4;;;;;string;CA_CARGA_ACADEMICA_CALENDARIO_PERIODO;fn_transform_ClearString(Path)
+PathPercepcion;5;;;;;string;CA_CARGA_ACADEMICA_CALENDARIO_PERIODO;fn_transform_ClearString(PathPercepcion)
+EstadoId;6;;;;;double;CA_CARGA_ACADEMICA_CALENDARIO_PERIODO;EstadoId
+Observacion;7;;;;;string;CA_CARGA_ACADEMICA_CALENDARIO_PERIODO;fn_transform_ClearString(Observacion)
+Codigo;8;;;;;string;CA_CARGA_ACADEMICA_CALENDARIO_PERIODO;fn_transform_ClearString(Codigo)
+Id;1;;T;;;double;CA_CARGA_CURSOS;Id
+IdEmpleado;2;;;;;double;CA_CARGA_CURSOS;IdEmpleado
+IdTipoHora;3;;;;;double;CA_CARGA_CURSOS;IdTipoHora
+IdCargaAcademica;4;;;;;double;CA_CARGA_CURSOS;IdCargaAcademica
+Descripcion;5;;;;;string;CA_CARGA_CURSOS;fn_transform_ClearString(Descripcion)
+Fecha_Inicio;6;;;;;date;CA_CARGA_CURSOS;Fecha_Inicio
+Fecha_Fin;7;;;;;date;CA_CARGA_CURSOS;Fecha_Fin
+modo;8;;;;;string;CA_CARGA_CURSOS;fn_transform_ClearString(modo)
+IdPlanCursos;9;;;;;double;CA_CARGA_CURSOS;IdPlanCursos
+UsuarioActualizacionId;10;;;;;double;CA_CARGA_CURSOS;UsuarioActualizacionId
+UsuarioCreacionId;11;;;;;double;CA_CARGA_CURSOS;UsuarioCreacionId
+FechaActualizacion;12;;;T;;timestamp;CA_CARGA_CURSOS;fn_transform_DatetimeMagic(FechaActualizacion,NULL,yyyy-MM-dd HH:mm:ss,1900-01-01 00:00:01)
+FechaCreacion;13;;;;;timestamp;CA_CARGA_CURSOS;fn_transform_DatetimeMagic(FechaCreacion,NULL,yyyy-MM-dd HH:mm:ss,1900-01-01 00:00:01)
+Estado;14;;;;;string;CA_CARGA_CURSOS;fn_transform_ClearString(Estado)
+AnioAcademicoId;15;;;;;double;CA_CARGA_CURSOS;AnioAcademicoId
+AulaId;16;;;;;double;CA_CARGA_CURSOS;AulaId
+GrupoId;17;;;;;double;CA_CARGA_CURSOS;GrupoId
+IdPlanEstudioId;18;;;;;double;CA_CARGA_CURSOS;IdPlanEstudioId
+IdPlanEstudioVersion;19;;;;;double;CA_CARGA_CURSOS;IdPlanEstudioVersion
+CapacidadVacanteP;20;;;;;double;CA_CARGA_CURSOS;CapacidadVacanteP
+CapacidadVacanteD;21;;;;;double;CA_CARGA_CURSOS;CapacidadVacanteD
+Complejo;22;;;;;string;CA_CARGA_CURSOS;fn_transform_ClearString(Complejo)
+Evaluable;23;;;;;string;CA_CARGA_CURSOS;fn_transform_ClearString(Evaluable)
+Grupos;24;;;;;double;CA_CARGA_CURSOS;Grupos
+Especial;25;;;;;string;CA_CARGA_CURSOS;fn_transform_ClearString(Especial)
+SalaVirtual;26;;;;;string;CA_CARGA_CURSOS;fn_transform_ClearString(SalaVirtual)
+CodigoExternoId;27;;;;;string;CA_CARGA_CURSOS;fn_transform_ClearString(CodigoExternoId)
+Id;1;;T;;;double;CA_MAE_EMPLEADO;Id
+TipoEmpleado;2;;;;;double;CA_MAE_EMPLEADO;TipoEmpleado
+PersonaId;3;;;;;double;CA_MAE_EMPLEADO;PersonaId
+web;4;;;;;string;CA_MAE_EMPLEADO;fn_transform_ClearString(web)
+Estado;5;;;;;string;CA_MAE_EMPLEADO;fn_transform_ClearString(Estado)
+LinkURL;6;;;;;string;CA_MAE_EMPLEADO;fn_transform_ClearString(LinkURL)
+FechaCreacion;7;;;;;timestamp;CA_MAE_EMPLEADO;fn_transform_DatetimeMagic(FechaCreacion,NULL,yyyy-MM-dd HH:mm:ss,1900-01-01 00:00:01)
+FechaActualizacion;8;;;T;;timestamp;CA_MAE_EMPLEADO;fn_transform_DatetimeMagic(FechaActualizacion,NULL,yyyy-MM-dd HH:mm:ss,1900-01-01 00:00:01)
+UsuarioCreadorId;9;;;;;double;CA_MAE_EMPLEADO;UsuarioCreadorId
+UsuarioAccionId;10;;;;;double;CA_MAE_EMPLEADO;UsuarioAccionId
+Id;1;;T;;;double;CA_MAE_GRUPO;Id
+Nombre;2;;;;;string;CA_MAE_GRUPO;fn_transform_ClearString(Nombre)
+Descripcion;3;;;;;string;CA_MAE_GRUPO;fn_transform_ClearString(Descripcion)
+Estado;4;;;;;string;CA_MAE_GRUPO;fn_transform_ClearString(Estado)
+GeoreferenciaId;5;;;;;double;CA_MAE_GRUPO;GeoreferenciaId
+UsuarioCreadorId;6;;;;;double;CA_MAE_GRUPO;UsuarioCreadorId
+UsuarioAccionId;7;;;;;double;CA_MAE_GRUPO;UsuarioAccionId
+FechaCreaccion;8;;;;;timestamp;CA_MAE_GRUPO;fn_transform_DatetimeMagic(FechaCreaccion,NULL,yyyy-MM-dd HH:mm:ss,1900-01-01 00:00:01)
+FechaAccion;9;;;T;;timestamp;CA_MAE_GRUPO;fn_transform_DatetimeMagic(FechaAccion,NULL,yyyy-MM-dd HH:mm:ss,1900-01-01 00:00:01)
+Complejo;10;;;;;string;CA_MAE_GRUPO;fn_transform_ClearString(Complejo)
+CodigoExternoId;11;;;;;string;CA_MAE_GRUPO;fn_transform_ClearString(CodigoExternoId)
+Id;1;;T;;;double;CURSOS;Id
+Alias;2;;;;;string;CURSOS;fn_transform_ClearString(Alias)
+Nombre;3;;;;;string;CURSOS;fn_transform_ClearString(Nombre)
+Creditos;4;;;;;string;CURSOS;fn_transform_ClearString(Creditos)
+TotalHP;5;;;;;string;CURSOS;fn_transform_ClearString(TotalHP)
+TotalHT;6;;;;;string;CURSOS;fn_transform_ClearString(TotalHT)
+NotaAprobatoria;7;;;;;string;CURSOS;fn_transform_ClearString(NotaAprobatoria)
+Sumilla;8;;;;;string;CURSOS;fn_transform_ClearString(Sumilla)
+NivelAcademicoId;9;;;;;double;CURSOS;NivelAcademicoId
+SuperId;10;;;;;double;CURSOS;SuperId
+EstadoId;11;;;;;double;CURSOS;EstadoId
+EntidadId;12;;;;;double;CURSOS;EntidadId
+UsuarioAccionId;13;;;;;double;CURSOS;UsuarioAccionId
+UsuarioCreadorId;14;;;;;double;CURSOS;UsuarioCreadorId
+TipoCursoId;15;;;;;double;CURSOS;TipoCursoId
+FechaCreacion;16;;;;;timestamp;CURSOS;fn_transform_DatetimeMagic(FechaCreacion,NULL,yyyy-MM-dd HH:mm:ss,1900-01-01 00:00:01)
+FechaActualizacion;17;;;T;;timestamp;CURSOS;fn_transform_DatetimeMagic(FechaActualizacion,NULL,yyyy-MM-dd HH:mm:ss,1900-01-01 00:00:01)
+IdServicioLaboratorio;18;;;;;double;CURSOS;IdServicioLaboratorio
+HorasLaboratorio;19;;;;;double;CURSOS;HorasLaboratorio
+TipoSubcurso;20;;;;;string;CURSOS;fn_transform_ClearString(TipoSubcurso)
+Color;21;;;;;string;CURSOS;fn_transform_ClearString(Color)
+Foto;22;;;;;string;CURSOS;fn_transform_ClearString(Foto)
+Codigo;23;;;;;string;CURSOS;fn_transform_ClearString(Codigo)
+TipoConceptoId;24;;;;;double;CURSOS;TipoConceptoId
+CursoExternoId;25;;;;;double;CURSOS;CursoExternoId
+Otro;26;;;;;string;CURSOS;fn_transform_ClearString(Otro)
+CodigoExternoId;27;;;;;string;CURSOS;fn_transform_ClearString(CodigoExternoId)
+Id;1;;T;;;double;ENTIDADES;Id
+Nombre_RS;2;;;;;string;ENTIDADES;fn_transform_ClearString(Nombre_RS)
+RUC;3;;;;;string;ENTIDADES;fn_transform_ClearString(RUC)
+Telefono;4;;;;;string;ENTIDADES;fn_transform_ClearString(Telefono)
+Correo;5;;;;;string;ENTIDADES;fn_transform_ClearString(Correo)
+Site;6;;;;;string;ENTIDADES;fn_transform_ClearString(Site)
+Principal;7;;;;;string;ENTIDADES;fn_transform_ClearString(Principal)
+TipoId;8;;;;;double;ENTIDADES;TipoId
+EstadoId;9;;;;;double;ENTIDADES;EstadoId
+GeoReferenciaId;10;;;;;double;ENTIDADES;GeoReferenciaId
+UsuarioAccionId;11;;;;;double;ENTIDADES;UsuarioAccionId
+UsuarioCreadorId;12;;;;;double;ENTIDADES;UsuarioCreadorId
+ParentId;13;;;;;double;ENTIDADES;ParentId
+UniversidadId;14;;;;;double;ENTIDADES;UniversidadId
+FechaCreacion;15;;;;;timestamp;ENTIDADES;fn_transform_DatetimeMagic(FechaCreacion,NULL,yyyy-MM-dd HH:mm:ss,1900-01-01 00:00:01)
+FechaActualizacion;16;;;T;;timestamp;ENTIDADES;fn_transform_DatetimeMagic(FechaActualizacion,NULL,yyyy-MM-dd HH:mm:ss,1900-01-01 00:00:01)
+OrganigramaId;17;;;;;double;ENTIDADES;OrganigramaId
+TipoMercadoId;18;;;;;double;ENTIDADES;TipoMercadoId
+Defecto;19;;;;;string;ENTIDADES;fn_transform_ClearString(Defecto)
+NombreCompleto;20;;;;;string;ENTIDADES;fn_transform_ClearString(NombreCompleto)
+Foto;21;;;;;string;ENTIDADES;fn_transform_ClearString(Foto)
+Siglas;22;;;;;string;ENTIDADES;fn_transform_ClearString(Siglas)
+CodigoExternoId;23;;;;;string;ENTIDADES;fn_transform_ClearString(CodigoExternoId)
+Id;1;;T;;;double;GEOREFERENCIAS;Id
+Alias;2;;;;;string;GEOREFERENCIAS;fn_transform_ClearString(Alias)
+Name;3;;;;;string;GEOREFERENCIAS;fn_transform_ClearString(Name)
+EntidadId;4;;;;;double;GEOREFERENCIAS;EntidadId
+SuperId;5;;;;;double;GEOREFERENCIAS;SuperId
+UsuarioAccionId;6;;;;;double;GEOREFERENCIAS;UsuarioAccionId
+UsuarioCreadorId;7;;;;;double;GEOREFERENCIAS;UsuarioCreadorId
+EstadoId;8;;;;;double;GEOREFERENCIAS;EstadoId
+FechaCreacion;9;;;;;timestamp;GEOREFERENCIAS;fn_transform_DatetimeMagic(FechaCreacion,NULL,yyyy-MM-dd HH:mm:ss,1900-01-01 00:00:01)
+FechaActualizacion;10;;;T;;timestamp;GEOREFERENCIAS;fn_transform_DatetimeMagic(FechaActualizacion,NULL,yyyy-MM-dd HH:mm:ss,1900-01-01 00:00:01)
+DRE;11;;;;;string;GEOREFERENCIAS;fn_transform_ClearString(DRE)
+UGEL;12;;;;;string;GEOREFERENCIAS;fn_transform_ClearString(UGEL)
+Complejo;13;;;;;string;GEOREFERENCIAS;fn_transform_ClearString(Complejo)
+Direccion;14;;;;;string;GEOREFERENCIAS;fn_transform_ClearString(Direccion)
+Telefono;15;;;;;string;GEOREFERENCIAS;fn_transform_ClearString(Telefono)
+Logo;16;;;;;string;GEOREFERENCIAS;fn_transform_ClearString(Logo)
+AreaGeograficaId;17;;;;;double;GEOREFERENCIAS;AreaGeograficaId
+CodigoExternoId;18;;;;;string;GEOREFERENCIAS;fn_transform_ClearString(CodigoExternoId)
+SedeExternaId;19;;;;;double;GEOREFERENCIAS;SedeExternaId
+IdContrato;1;;T;;;double;MA_CONTRATO;IdContrato
+Alum_Id;2;;;;;double;MA_CONTRATO;Alum_Id
+Nro;3;;;;;string;MA_CONTRATO;fn_transform_ClearString(Nro)
+Fecha;4;;;;;timestamp;MA_CONTRATO;fn_transform_DatetimeMagic(Fecha,NULL,yyyy-MM-dd HH:mm:ss,1900-01-01 00:00:01)
+Nro_Hmno;5;;;;;double;MA_CONTRATO;Nro_Hmno
+Residencia;6;;;;;string;MA_CONTRATO;fn_transform_ClearString(Residencia)
+SO;7;;;;;string;MA_CONTRATO;fn_transform_ClearString(SO)
+Monto_matricula;8;;;;;double;MA_CONTRATO;Monto_matricula
+Monto_Ensenanza;9;;;;;double;MA_CONTRATO;Monto_Ensenanza
+Monto_Pago_Matricula;10;;;;;double;MA_CONTRATO;Monto_Pago_Matricula
+Fecha_Pre_Matricula;11;;;;;timestamp;MA_CONTRATO;fn_transform_DatetimeMagic(Fecha_Pre_Matricula,NULL,yyyy-MM-dd HH:mm:ss,1900-01-01 00:00:01)
+Id_Apoderado;12;;;;;double;MA_CONTRATO;Id_Apoderado
+Condicional;13;;;;;string;MA_CONTRATO;fn_transform_ClearString(Condicional)
+A�o;14;;;;;double;MA_CONTRATO;A�o
+Per_User_Id;15;;;;;double;MA_CONTRATO;Per_User_Id
+Per_User_Pre;16;;;;;double;MA_CONTRATO;Per_User_Pre
+Per_User_Mat;17;;;;;double;MA_CONTRATO;Per_User_Mat
+Per_User_Modify;18;;;;;double;MA_CONTRATO;Per_User_Modify
+Per_Fecha_Modify;19;;;;;double;MA_CONTRATO;Per_Fecha_Modify
+Id_AnioAcademico;20;;;;;double;MA_CONTRATO;Id_AnioAcademico
+Id_Compromiso;21;;;;;double;MA_CONTRATO;Id_Compromiso
+EstadoId;22;;;;;double;MA_CONTRATO;EstadoId
+FechaAccion;23;;;T;;timestamp;MA_CONTRATO;fn_transform_DatetimeMagic(FechaAccion,NULL,yyyy-MM-dd HH:mm:ss,1900-01-01 00:00:01)
+Saldo;24;;;;;double;MA_CONTRATO;Saldo
+NivelAcademicoId;25;;;;;double;MA_CONTRATO;NivelAcademicoId
+PeriodoAcademicoId;26;;;;;double;MA_CONTRATO;PeriodoAcademicoId
+GrupoId;27;;;;;double;MA_CONTRATO;GrupoId
+Descuentos;28;;;;;double;MA_CONTRATO;Descuentos
+PlanPagoId;29;;;;;double;MA_CONTRATO;PlanPagoId
+PlanEstudioAlumnoId;30;;;;;double;MA_CONTRATO;PlanEstudioAlumnoId
+FechaContrato;31;;;;;timestamp;MA_CONTRATO;fn_transform_DatetimeMagic(FechaContrato,NULL,yyyy-MM-dd HH:mm:ss,1900-01-01 00:00:01)
+ReservaVacanteId;32;;;;;double;MA_CONTRATO;ReservaVacanteId
+ListaPrecioId;33;;;;;double;MA_CONTRATO;ListaPrecioId
+FechaRetiro;34;;;;;timestamp;MA_CONTRATO;fn_transform_DatetimeMagic(FechaRetiro,NULL,yyyy-MM-dd HH:mm:ss,1900-01-01 00:00:01)
+ConvocatoriaId;35;;;;;double;MA_CONTRATO;ConvocatoriaId
+ModalidadIngresoId;36;;;;;double;MA_CONTRATO;ModalidadIngresoId
+Vigente;37;;;;;string;MA_CONTRATO;fn_transform_ClearString(Vigente)
+Nuevo;38;;;;;string;MA_CONTRATO;fn_transform_ClearString(Nuevo)
+ContratoFinancieroDriveId;39;;;;;string;MA_CONTRATO;fn_transform_ClearString(ContratoFinancieroDriveId)
+Id;1;;T;;;double;MA_DETALLE_CONTRATO_ACAD;Id
+IdContrato;2;;;;;double;MA_DETALLE_CONTRATO_ACAD;IdContrato
+IdCargaCurso;3;;;;;double;MA_DETALLE_CONTRATO_ACAD;IdCargaCurso
+IdAnioAcademico;4;;;;;double;MA_DETALLE_CONTRATO_ACAD;IdAnioAcademico
+IdCargaAcademica;5;;;;;double;MA_DETALLE_CONTRATO_ACAD;IdCargaAcademica
+NotaPromedio;6;;;;;double;MA_DETALLE_CONTRATO_ACAD;NotaPromedio
+IdNivelAcademico;7;;;;;double;MA_DETALLE_CONTRATO_ACAD;IdNivelAcademico
+UsuarioCreacionId;8;;;;;double;MA_DETALLE_CONTRATO_ACAD;UsuarioCreacionId
+UsuarioActualizacionId;9;;;;;double;MA_DETALLE_CONTRATO_ACAD;UsuarioActualizacionId
+FechaCreacion;10;;;;;timestamp;MA_DETALLE_CONTRATO_ACAD;fn_transform_DatetimeMagic(FechaCreacion,NULL,yyyy-MM-dd HH:mm:ss,1900-01-01 00:00:01)
+FechaActualizacion;11;;;T;;timestamp;MA_DETALLE_CONTRATO_ACAD;fn_transform_DatetimeMagic(FechaActualizacion,NULL,yyyy-MM-dd HH:mm:ss,1900-01-01 00:00:01)
+Escala;12;;;;;string;MA_DETALLE_CONTRATO_ACAD;fn_transform_ClearString(Escala)
+CursoId;13;;;;;double;MA_DETALLE_CONTRATO_ACAD;CursoId
+GrupoId;14;;;;;double;MA_DETALLE_CONTRATO_ACAD;GrupoId
+AulaId;15;;;;;double;MA_DETALLE_CONTRATO_ACAD;AulaId
+Estado;16;;;;;string;MA_DETALLE_CONTRATO_ACAD;fn_transform_ClearString(Estado)
+Id;1;;T;;;double;NIVELESACADEMICOS;Id
+Alias;2;;;;;string;NIVELESACADEMICOS;fn_transform_ClearString(Alias)
+Nombre;3;;;;;string;NIVELESACADEMICOS;fn_transform_ClearString(Nombre)
+Activo;4;;;;;string;NIVELESACADEMICOS;fn_transform_ClearString(Activo)
+SuperId;5;;;;;double;NIVELESACADEMICOS;SuperId
+UsuarioAccionId;6;;;;;double;NIVELESACADEMICOS;UsuarioAccionId
+EntidadId;7;;;;;double;NIVELESACADEMICOS;EntidadId
+FechaCreacion;8;;;;;timestamp;NIVELESACADEMICOS;fn_transform_DatetimeMagic(FechaCreacion,NULL,yyyy-MM-dd HH:mm:ss,1900-01-01 00:00:01)
+UsuarioCreadorId;9;;;;;double;NIVELESACADEMICOS;UsuarioCreadorId
+FechaActualizacion;10;;;T;;timestamp;NIVELESACADEMICOS;fn_transform_DatetimeMagic(FechaActualizacion,NULL,yyyy-MM-dd HH:mm:ss,1900-01-01 00:00:01)
+Id;1;;T;;;double;PERIODOS;Id
+Nombre;2;;;;;string;PERIODOS;fn_transform_ClearString(Nombre)
+FecComienzo;3;;;;;timestamp;PERIODOS;fn_transform_DatetimeMagic(FecComienzo,NULL,yyyy-MM-dd HH:mm:ss,1900-01-01 00:00:01)
+FecTermino;4;;;;;timestamp;PERIODOS;fn_transform_DatetimeMagic(FecTermino,NULL,yyyy-MM-dd HH:mm:ss,1900-01-01 00:00:01)
+TipoId;5;;;;;double;PERIODOS;TipoId
+SuperId;6;;;;;double;PERIODOS;SuperId
+GeoReferenciaId;7;;;;;double;PERIODOS;GeoReferenciaId
+OrganigramaId;8;;;;;double;PERIODOS;OrganigramaId
+EntidadId;9;;;;;double;PERIODOS;EntidadId
+UsuarioAccionId;10;;;;;double;PERIODOS;UsuarioAccionId
+UsuarioCreadorId;11;;;;;double;PERIODOS;UsuarioCreadorId
+EstadoId;12;;;;;double;PERIODOS;EstadoId
+FeachaCreacion;13;;;;;timestamp;PERIODOS;fn_transform_DatetimeMagic(FeachaCreacion,NULL,yyyy-MM-dd HH:mm:ss,1900-01-01 00:00:01)
+FechaActualizacion;14;;;T;;timestamp;PERIODOS;fn_transform_DatetimeMagic(FechaActualizacion,NULL,yyyy-MM-dd HH:mm:ss,1900-01-01 00:00:01)
+Activo;15;;;;;string;PERIODOS;fn_transform_ClearString(Activo)
+CicloId;17;;;;;double;PERIODOS;CicloId
+Alias;18;;;;;string;PERIODOS;fn_transform_ClearString(Alias)
+PeriodoExternoId;19;;;;;double;PERIODOS;PeriodoExternoId
+SiguientePeriodoId;20;;;;;double;PERIODOS;SiguientePeriodoId
+CodigoExternoId;21;;;;;string;PERIODOS;fn_transform_ClearString(CodigoExternoId)
+Orden;22;;;;;double;PERIODOS;Orden
+Id;1;;T;;;double;PERSONAS;Id
+CodModular;2;;;;;string;PERSONAS;fn_transform_ClearString(CodModular)
+NumDoc;3;;;;;string;PERSONAS;fn_transform_ClearString(NumDoc)
+Nombres;4;;;;;string;PERSONAS;fn_transform_ClearString(Nombres)
+ApellidoPaterno;5;;;;;string;PERSONAS;fn_transform_ClearString(ApellidoPaterno)
+ApellidoMaterno;6;;;;;string;PERSONAS;fn_transform_ClearString(ApellidoMaterno)
+Telefono;7;;;;;string;PERSONAS;fn_transform_ClearString(Telefono)
+Celular;8;;;;;string;PERSONAS;fn_transform_ClearString(Celular)
+IsoPais;9;;;;;string;PERSONAS;fn_transform_ClearString(IsoPais)
+FechaNac;10;;;;;timestamp;PERSONAS;fn_transform_DatetimeMagic(FechaNac,NULL,yyyy-MM-dd HH:mm:ss,1900-01-01 00:00:01)
+Correo;11;;;;;string;PERSONAS;fn_transform_ClearString(Correo)
+Genero;12;;;;;string;PERSONAS;fn_transform_ClearString(Genero)
+EstadoCivil;13;;;;;string;PERSONAS;fn_transform_ClearString(EstadoCivil)
+Ocupacion;14;;;;;string;PERSONAS;fn_transform_ClearString(Ocupacion)
+TipoPersonaId;15;;;;;double;PERSONAS;TipoPersonaId
+TipoDocId;16;;;;;double;PERSONAS;TipoDocId
+UsuarioAccionId;17;;;;;double;PERSONAS;UsuarioAccionId
+EstadoId;18;;;;;double;PERSONAS;EstadoId
+NivelAcademicoId;19;;;;;double;PERSONAS;NivelAcademicoId
+FechaCreacion;20;;;;;timestamp;PERSONAS;fn_transform_DatetimeMagic(FechaCreacion,NULL,yyyy-MM-dd HH:mm:ss,1900-01-01 00:00:01)
+FechaActualizacion;21;;;T;;timestamp;PERSONAS;fn_transform_DatetimeMagic(FechaActualizacion,NULL,yyyy-MM-dd HH:mm:ss,1900-01-01 00:00:01)
+EmpresaId;22;;;;;double;PERSONAS;EmpresaId
+UsuarioCreadorId;23;;;;;double;PERSONAS;UsuarioCreadorId
+CicloVidaCliId;24;;;;;string;PERSONAS;fn_transform_ClearString(CicloVidaCliId)
+GeoReferenciaId;25;;;;;double;PERSONAS;GeoReferenciaId
+Facebook;26;;;;;string;PERSONAS;fn_transform_ClearString(Facebook)
+NivelInteresId;27;;;;;double;PERSONAS;NivelInteresId
+CarreraDefinida;28;;;;;string;PERSONAS;fn_transform_ClearString(CarreraDefinida)
+UniversidadDefinida;29;;;;;string;PERSONAS;fn_transform_ClearString(UniversidadDefinida)
+InformacionUniv;30;;;;;double;PERSONAS;InformacionUniv
+Posicion;31;;;;;string;PERSONAS;fn_transform_ClearString(Posicion)
+Campa�aOrId;32;;;;;double;PERSONAS;Campa�aOrId
+MatMarketing;33;;;;;string;PERSONAS;fn_transform_ClearString(MatMarketing)
+FormaContactoId;34;;;;;double;PERSONAS;FormaContactoId
+PermCorreo;35;;;;;string;PERSONAS;fn_transform_ClearString(PermCorreo)
+PermTel;36;;;;;string;PERSONAS;fn_transform_ClearString(PermTel)
+OrigenCliId;37;;;;;double;PERSONAS;OrigenCliId
+Observacion;38;;;;;string;PERSONAS;fn_transform_ClearString(Observacion)
+Contacto;39;;;;;string;PERSONAS;fn_transform_ClearString(Contacto)
+CntSupPrefId;40;;;;;double;PERSONAS;CntSupPrefId
+CondicionEconomicaId;41;;;;;double;PERSONAS;CondicionEconomicaId
+Resultado/Nota;42;;;;;double;PERSONAS;Resultado/Nota
+PeriodoId;43;;;;;double;PERSONAS;PeriodoId
+FaseActualId;44;;;;;double;PERSONAS;FaseActualId
+OrganigramaId;45;;;;;double;PERSONAS;OrganigramaId
+ProgramaEducativoId;46;;;;;double;PERSONAS;ProgramaEducativoId
+Foto;47;;;;;string;PERSONAS;fn_transform_ClearString(Foto)
+CicloVidaAlumId;48;;;;;double;PERSONAS;CicloVidaAlumId
+CorreoInstitucional;49;;;;;string;PERSONAS;fn_transform_ClearString(CorreoInstitucional)
+PathFirma;50;;;;;string;PERSONAS;fn_transform_ClearString(PathFirma)
+CodigoFinanciero;51;;;;;string;PERSONAS;fn_transform_ClearString(CodigoFinanciero)
+CodigoValidado;52;;;;;string;PERSONAS;fn_transform_ClearString(CodigoValidado)
+Biografia;53;;;;;string;PERSONAS;fn_transform_ClearString(Biografia)
+Id;1;;T;;;double;PLANCURSOS;Id
+Alias;2;;;;;string;PLANCURSOS;fn_transform_ClearString(Alias)
+PeriodoId;3;;;;;double;PLANCURSOS;PeriodoId
+PlanEstudioId;4;;;;;double;PLANCURSOS;PlanEstudioId
+UsuarioAccionId;5;;;;;double;PLANCURSOS;UsuarioAccionId
+UsuarioCreadorId;6;;;;;double;PLANCURSOS;UsuarioCreadorId
+ParentId;7;;;;;double;PLANCURSOS;ParentId
+TotalHT;8;;;;;double;PLANCURSOS;TotalHT
+TotalHP;9;;;;;double;PLANCURSOS;TotalHP
+Peso;10;;;;;double;PLANCURSOS;Peso
+CursoId;11;;;;;double;PLANCURSOS;CursoId
+FechaCreacion;12;;;;;timestamp;PLANCURSOS;fn_transform_DatetimeMagic(FechaCreacion,NULL,yyyy-MM-dd HH:mm:ss,1900-01-01 00:00:01)
+FechaActualizacion;13;;;T;;timestamp;PLANCURSOS;fn_transform_DatetimeMagic(FechaActualizacion,NULL,yyyy-MM-dd HH:mm:ss,1900-01-01 00:00:01)
+Id;1;;T;;;double;PLANESTUDIOS;Id
+FechaCreacion;2;;;;;timestamp;PLANESTUDIOS;fn_transform_DatetimeMagic(FechaCreacion,NULL,yyyy-MM-dd HH:mm:ss,1900-01-01 00:00:01)
+FechaActualizacion;3;;;T;;timestamp;PLANESTUDIOS;fn_transform_DatetimeMagic(FechaActualizacion,NULL,yyyy-MM-dd HH:mm:ss,1900-01-01 00:00:01)
+FechaCierre;4;;;;;timestamp;PLANESTUDIOS;fn_transform_DatetimeMagic(FechaCierre,NULL,yyyy-MM-dd HH:mm:ss,1900-01-01 00:00:01)
+FechaPublicacion;5;;;;;timestamp;PLANESTUDIOS;fn_transform_DatetimeMagic(FechaPublicacion,NULL,yyyy-MM-dd HH:mm:ss,1900-01-01 00:00:01)
+Alias;6;;;;;string;PLANESTUDIOS;fn_transform_ClearString(Alias)
+Mencion;7;;;;;string;PLANESTUDIOS;fn_transform_ClearString(Mencion)
+ProgramaId;8;;;;;double;PLANESTUDIOS;ProgramaId
+NombrePlan;9;;;;;string;PLANESTUDIOS;fn_transform_ClearString(NombrePlan)
+NroResolucion;10;;;;;string;PLANESTUDIOS;fn_transform_ClearString(NroResolucion)
+Responsable;11;;;;;string;PLANESTUDIOS;fn_transform_ClearString(Responsable)
+Version;12;;;;;string;PLANESTUDIOS;fn_transform_ClearString(Version)
+EstadoId;13;;;;;double;PLANESTUDIOS;EstadoId
+UsuarioId;14;;;;;double;PLANESTUDIOS;UsuarioId
+UsuarioAccionId;15;;;;;double;PLANESTUDIOS;UsuarioAccionId
+FechaResolucion;16;;;;;timestamp;PLANESTUDIOS;fn_transform_DatetimeMagic(FechaResolucion,NULL,yyyy-MM-dd HH:mm:ss,1900-01-01 00:00:01)
+CodigoExternoId;17;;;;;string;PLANESTUDIOS;fn_transform_ClearString(CodigoExternoId)
+Id;1;;T;;;double;PROGRAMASEDUCATIVO;Id
+Nombre;2;;;;;string;PROGRAMASEDUCATIVO;fn_transform_ClearString(Nombre)
+NivelAcademicoId;3;;;;;double;PROGRAMASEDUCATIVO;NivelAcademicoId
+ModProgramaId;4;;;;;double;PROGRAMASEDUCATIVO;ModProgramaId
+BackGroundPortal;5;;;;;string;PROGRAMASEDUCATIVO;fn_transform_ClearString(BackGroundPortal)
+colorTituloPortal;6;;;;;string;PROGRAMASEDUCATIVO;fn_transform_ClearString(colorTituloPortal)
+FechaCierre;7;;;;;timestamp;PROGRAMASEDUCATIVO;fn_transform_DatetimeMagic(FechaCierre,NULL,yyyy-MM-dd HH:mm:ss,1900-01-01 00:00:01)
+FechaAcuerdo;8;;;;;timestamp;PROGRAMASEDUCATIVO;fn_transform_DatetimeMagic(FechaAcuerdo,NULL,yyyy-MM-dd HH:mm:ss,1900-01-01 00:00:01)
+FechaResolucion;9;;;;;timestamp;PROGRAMASEDUCATIVO;fn_transform_DatetimeMagic(FechaResolucion,NULL,yyyy-MM-dd HH:mm:ss,1900-01-01 00:00:01)
+FechaCreacion;10;;;;;timestamp;PROGRAMASEDUCATIVO;fn_transform_DatetimeMagic(FechaCreacion,NULL,yyyy-MM-dd HH:mm:ss,1900-01-01 00:00:01)
+FechaActualizacion;11;;;T;;timestamp;PROGRAMASEDUCATIVO;fn_transform_DatetimeMagic(FechaActualizacion,NULL,yyyy-MM-dd HH:mm:ss,1900-01-01 00:00:01)
+FechaPublicacion;12;;;;;timestamp;PROGRAMASEDUCATIVO;fn_transform_DatetimeMagic(FechaPublicacion,NULL,yyyy-MM-dd HH:mm:ss,1900-01-01 00:00:01)
+NroCiclos;13;;;;;string;PROGRAMASEDUCATIVO;fn_transform_ClearString(NroCiclos)
+NroAcuerdo;14;;;;;string;PROGRAMASEDUCATIVO;fn_transform_ClearString(NroAcuerdo)
+NroResolucion;15;;;;;string;PROGRAMASEDUCATIVO;fn_transform_ClearString(NroResolucion)
+TiempoDuracion;16;;;;;string;PROGRAMASEDUCATIVO;fn_transform_ClearString(TiempoDuracion)
+HorasTeoricas;17;;;;;string;PROGRAMASEDUCATIVO;fn_transform_ClearString(HorasTeoricas)
+HorasPracticas;18;;;;;string;PROGRAMASEDUCATIVO;fn_transform_ClearString(HorasPracticas)
+HorasTutoria;19;;;;;string;PROGRAMASEDUCATIVO;fn_transform_ClearString(HorasTutoria)
+Descripcion;20;;;;;string;PROGRAMASEDUCATIVO;fn_transform_ClearString(Descripcion)
+UsuarioAccion;21;;;;;double;PROGRAMASEDUCATIVO;UsuarioAccion
+EstadoId;22;;;;;double;PROGRAMASEDUCATIVO;EstadoId
+InfAcademica;23;;;;;string;PROGRAMASEDUCATIVO;fn_transform_ClearString(InfAcademica)
+Fotos;24;;;;;string;PROGRAMASEDUCATIVO;fn_transform_ClearString(Fotos)
+PlanEstudio;25;;;;;string;PROGRAMASEDUCATIVO;fn_transform_ClearString(PlanEstudio)
+Presentacion;26;;;;;string;PROGRAMASEDUCATIVO;fn_transform_ClearString(Presentacion)
+Experiencias;27;;;;;string;PROGRAMASEDUCATIVO;fn_transform_ClearString(Experiencias)
+Perfiles;28;;;;;string;PROGRAMASEDUCATIVO;fn_transform_ClearString(Perfiles)
+UsuarioCreadorId;29;;;;;double;PROGRAMASEDUCATIVO;UsuarioCreadorId
+EntidadId;30;;;;;double;PROGRAMASEDUCATIVO;EntidadId
+LinkBrochur;31;;;;;string;PROGRAMASEDUCATIVO;fn_transform_ClearString(LinkBrochur)
+TipoEvaluacionId;32;;;;;double;PROGRAMASEDUCATIVO;TipoEvaluacionId
+ProgramaPredecesorId;34;;;;;double;PROGRAMASEDUCATIVO;ProgramaPredecesorId
+TipoProgramaId;35;;;;;double;PROGRAMASEDUCATIVO;TipoProgramaId
+TipoMatriculaId;36;;;;;double;PROGRAMASEDUCATIVO;TipoMatriculaId
+TipoInformeSiagieId;37;;;;;double;PROGRAMASEDUCATIVO;TipoInformeSiagieId
+ProgramaExternoId;38;;;;;double;PROGRAMASEDUCATIVO;ProgramaExternoId
+SiguienteProgramaId;39;;;;;double;PROGRAMASEDUCATIVO;SiguienteProgramaId
+ProgramaReferenciaId;40;;;;;double;PROGRAMASEDUCATIVO;ProgramaReferenciaId
+CodigoExternoId;41;;;;;string;PROGRAMASEDUCATIVO;fn_transform_ClearString(CodigoExternoId)
+ActividadAprendizajeId;1;;T;;;double;T_GC_MAE_ACTIVIDAD_EVENTO;ActividadAprendizajeId
+SesionAprendizajeId;2;;;;;double;T_GC_MAE_ACTIVIDAD_EVENTO;SesionAprendizajeId
+TipoActividadId;3;;;;;double;T_GC_MAE_ACTIVIDAD_EVENTO;TipoActividadId
+SecuenciaId;4;;;;;double;T_GC_MAE_ACTIVIDAD_EVENTO;SecuenciaId
+Tiempo;5;;;;;double;T_GC_MAE_ACTIVIDAD_EVENTO;Tiempo
+Actividad;6;;;;;string;T_GC_MAE_ACTIVIDAD_EVENTO;fn_transform_ClearString(Actividad)
+DescripcionActividad;7;;;;;string;T_GC_MAE_ACTIVIDAD_EVENTO;fn_transform_ClearString(DescripcionActividad)
+UsuarioCreacion;8;;;;;double;T_GC_MAE_ACTIVIDAD_EVENTO;UsuarioCreacion
+FechaCreacion;9;;;;;timestamp;T_GC_MAE_ACTIVIDAD_EVENTO;fn_transform_DatetimeMagic(FechaCreacion,NULL,yyyy-MM-dd HH:mm:ss,1900-01-01 00:00:01)
+UsuarioAccion;10;;;;;double;T_GC_MAE_ACTIVIDAD_EVENTO;UsuarioAccion
+FechaAccion;11;;;T;;timestamp;T_GC_MAE_ACTIVIDAD_EVENTO;fn_transform_DatetimeMagic(FechaAccion,NULL,yyyy-MM-dd HH:mm:ss,1900-01-01 00:00:01)
+EstadoId;12;;;;;double;T_GC_MAE_ACTIVIDAD_EVENTO;EstadoId
+ParentId;13;;;;;double;T_GC_MAE_ACTIVIDAD_EVENTO;ParentId
+ActividadAprendizajeBaseId;14;;;;;double;T_GC_MAE_ACTIVIDAD_EVENTO;ActividadAprendizajeBaseId
+ProcesoActividadId;15;;;;;double;T_GC_MAE_ACTIVIDAD_EVENTO;ProcesoActividadId
+InstrumentoEvalId;16;;;;;double;T_GC_MAE_ACTIVIDAD_EVENTO;InstrumentoEvalId
+RolId;17;;;;;double;T_GC_MAE_ACTIVIDAD_EVENTO;RolId
+Contenido;18;;;;;string;T_GC_MAE_ACTIVIDAD_EVENTO;fn_transform_ClearString(Contenido)
+TareaId;19;;;;;string;T_GC_MAE_ACTIVIDAD_EVENTO;fn_transform_ClearString(TareaId)
+CalendarioAcademicoId;1;;T;;;double;T_GC_MAE_CALENDARIO_ACADEMICO;CalendarioAcademicoId
+ProgramaEducativoId;2;;;;;double;T_GC_MAE_CALENDARIO_ACADEMICO;ProgramaEducativoId
+AnioAcademicoId;3;;;;;double;T_GC_MAE_CALENDARIO_ACADEMICO;AnioAcademicoId
+UsuarioCreador;4;;;;;double;T_GC_MAE_CALENDARIO_ACADEMICO;UsuarioCreador
+FechaCreacion;5;;;;;timestamp;T_GC_MAE_CALENDARIO_ACADEMICO;fn_transform_DatetimeMagic(FechaCreacion,NULL,yyyy-MM-dd HH:mm:ss,1900-01-01 00:00:01)
+UsuarioActualizacion;6;;;;;double;T_GC_MAE_CALENDARIO_ACADEMICO;UsuarioActualizacion
+FechaAccion;7;;;T;;timestamp;T_GC_MAE_CALENDARIO_ACADEMICO;fn_transform_DatetimeMagic(FechaAccion,NULL,yyyy-MM-dd HH:mm:ss,1900-01-01 00:00:01)
+EstadoId;8;;;;;double;T_GC_MAE_CALENDARIO_ACADEMICO;EstadoId
+EntidadId;9;;;;;double;T_GC_MAE_CALENDARIO_ACADEMICO;EntidadId
+GeoreferenciaId;10;;;;;double;T_GC_MAE_CALENDARIO_ACADEMICO;GeoreferenciaId
+CalendarioPeriodoId;1;;T;;;double;T_GC_MAE_CALENDARIO_PERIODO;CalendarioPeriodoId
+CalendarioAcademicoId;2;;;;;double;T_GC_MAE_CALENDARIO_PERIODO;CalendarioAcademicoId
+TipoId;3;;;;;double;T_GC_MAE_CALENDARIO_PERIODO;TipoId
+FechaInicio;4;;;;;date;T_GC_MAE_CALENDARIO_PERIODO;FechaInicio
+FechaFin;5;;;;;date;T_GC_MAE_CALENDARIO_PERIODO;FechaFin
+EstadoId;6;;;;;double;T_GC_MAE_CALENDARIO_PERIODO;EstadoId
+UsuarioCreador;7;;;;;double;T_GC_MAE_CALENDARIO_PERIODO;UsuarioCreador
+FechaCreaccion;8;;;;;timestamp;T_GC_MAE_CALENDARIO_PERIODO;fn_transform_DatetimeMagic(FechaCreaccion,NULL,yyyy-MM-dd HH:mm:ss,1900-01-01 00:00:01)
+UsuarioAccion;9;;;;;double;T_GC_MAE_CALENDARIO_PERIODO;UsuarioAccion
+FechaAccion;10;;;T;;timestamp;T_GC_MAE_CALENDARIO_PERIODO;fn_transform_DatetimeMagic(FechaAccion,NULL,yyyy-MM-dd HH:mm:ss,1900-01-01 00:00:01)
+DiasPlazo;11;;;;;double;T_GC_MAE_CALENDARIO_PERIODO;DiasPlazo
+CompetenciaId;1;;T;;;double;T_GC_MAE_COMPETENCIA;CompetenciaId
+TipoCompetenciaId;2;;;;;double;T_GC_MAE_COMPETENCIA;TipoCompetenciaId
+Competencia;3;;;;;string;T_GC_MAE_COMPETENCIA;fn_transform_ClearString(Competencia)
+Descripcion;4;;;;;string;T_GC_MAE_COMPETENCIA;fn_transform_ClearString(Descripcion)
+ParentId;5;;;;;double;T_GC_MAE_COMPETENCIA;ParentId
+Estado;6;;;;;string;T_GC_MAE_COMPETENCIA;fn_transform_ClearString(Estado)
+UsuarioCreador;7;;;;;double;T_GC_MAE_COMPETENCIA;UsuarioCreador
+FechaCreacion;8;;;;;timestamp;T_GC_MAE_COMPETENCIA;fn_transform_DatetimeMagic(FechaCreacion,NULL,yyyy-MM-dd HH:mm:ss,1900-01-01 00:00:01)
+UsuarioAccion;9;;;;;double;T_GC_MAE_COMPETENCIA;UsuarioAccion
+FechaAccion;10;;;T;;timestamp;T_GC_MAE_COMPETENCIA;fn_transform_DatetimeMagic(FechaAccion,NULL,yyyy-MM-dd HH:mm:ss,1900-01-01 00:00:01)
+EntidadId;11;;;;;double;T_GC_MAE_COMPETENCIA;EntidadId
+GeoreferenciaId;12;;;;;double;T_GC_MAE_COMPETENCIA;GeoreferenciaId
+Alias;13;;;;;string;T_GC_MAE_COMPETENCIA;fn_transform_ClearString(Alias)
+Codigo;14;;;;;string;T_GC_MAE_COMPETENCIA;fn_transform_ClearString(Codigo)
+CompetenciaExternoId;15;;;;;double;T_GC_MAE_COMPETENCIA;CompetenciaExternoId
+Orden;16;;;;;double;T_GC_MAE_COMPETENCIA;Orden
+ProductoAprendizajeId;1;;T;;;double;T_GC_MAE_PRODUCTO_APRENDIZAJE_EVENTO;ProductoAprendizajeId
+Titulo;2;;;;;string;T_GC_MAE_PRODUCTO_APRENDIZAJE_EVENTO;fn_transform_ClearString(Titulo)
+Descripcion;3;;;;;string;T_GC_MAE_PRODUCTO_APRENDIZAJE_EVENTO;fn_transform_ClearString(Descripcion)
+Estado;4;;;;;string;T_GC_MAE_PRODUCTO_APRENDIZAJE_EVENTO;fn_transform_ClearString(Estado)
+UnidadAprendizajeId;5;;;;;double;T_GC_MAE_PRODUCTO_APRENDIZAJE_EVENTO;UnidadAprendizajeId
+SilaboEventoId;6;;;;;double;T_GC_MAE_PRODUCTO_APRENDIZAJE_EVENTO;SilaboEventoId
+UsuarioCreadorId;7;;;;;double;T_GC_MAE_PRODUCTO_APRENDIZAJE_EVENTO;UsuarioCreadorId
+UsuarioAccionId;8;;;;;double;T_GC_MAE_PRODUCTO_APRENDIZAJE_EVENTO;UsuarioAccionId
+FechaCreacion;9;;;;;timestamp;T_GC_MAE_PRODUCTO_APRENDIZAJE_EVENTO;fn_transform_DatetimeMagic(FechaCreacion,NULL,yyyy-MM-dd HH:mm:ss,1900-01-01 00:00:01)
+FechaAccion;10;;;T;;timestamp;T_GC_MAE_PRODUCTO_APRENDIZAJE_EVENTO;fn_transform_DatetimeMagic(FechaAccion,NULL,yyyy-MM-dd HH:mm:ss,1900-01-01 00:00:01)
+ProductoAprendizajeBaseId;11;;;;;double;T_GC_MAE_PRODUCTO_APRENDIZAJE_EVENTO;ProductoAprendizajeBaseId
+Contenido;12;;;;;string;T_GC_MAE_PRODUCTO_APRENDIZAJE_EVENTO;fn_transform_ClearString(Contenido)
+RecursoDidacticoId;1;;T;;;string;T_GC_MAE_RECURSO_DIDATICO_EVENTO;fn_transform_ClearString(RecursoDidacticoId)
+Titulo;2;;;;;string;T_GC_MAE_RECURSO_DIDATICO_EVENTO;fn_transform_ClearString(Titulo)
+Descripcion;3;;;;;string;T_GC_MAE_RECURSO_DIDATICO_EVENTO;fn_transform_ClearString(Descripcion)
+TipoId;4;;;;;double;T_GC_MAE_RECURSO_DIDATICO_EVENTO;TipoId
+SilaboEventoId;5;;;;;double;T_GC_MAE_RECURSO_DIDATICO_EVENTO;SilaboEventoId
+Estado;6;;;;;string;T_GC_MAE_RECURSO_DIDATICO_EVENTO;fn_transform_ClearString(Estado)
+UsuarioCreador;7;;;;;double;T_GC_MAE_RECURSO_DIDATICO_EVENTO;UsuarioCreador
+FechaCreacion;8;;;;;timestamp;T_GC_MAE_RECURSO_DIDATICO_EVENTO;fn_transform_DatetimeMagic(FechaCreacion,NULL,yyyy-MM-dd HH:mm:ss,1900-01-01 00:00:01)
+UsuarioAccion;9;;;;;double;T_GC_MAE_RECURSO_DIDATICO_EVENTO;UsuarioAccion
+FechaAccion;10;;;T;;timestamp;T_GC_MAE_RECURSO_DIDATICO_EVENTO;fn_transform_DatetimeMagic(FechaAccion,NULL,yyyy-MM-dd HH:mm:ss,1900-01-01 00:00:01)
+PlanCursoId;11;;;;;double;T_GC_MAE_RECURSO_DIDATICO_EVENTO;PlanCursoId
+Url;12;;;;;string;T_GC_MAE_RECURSO_DIDATICO_EVENTO;fn_transform_ClearString(Url)
+RecursoDidacticoBaseId;13;;;;;double;T_GC_MAE_RECURSO_DIDATICO_EVENTO;RecursoDidacticoBaseId
+DriveId;14;;;;;string;T_GC_MAE_RECURSO_DIDATICO_EVENTO;fn_transform_ClearString(DriveId)
+Vectorizado;15;;;;;string;T_GC_MAE_RECURSO_DIDATICO_EVENTO;fn_transform_ClearString(Vectorizado)
+SesionAprendizajeId;1;;T;;;double;T_GC_MAE_SESION_APRENDIZAJE_EVENTO;SesionAprendizajeId
+UnidadAprendizajeId;2;;;;;double;T_GC_MAE_SESION_APRENDIZAJE_EVENTO;UnidadAprendizajeId
+Titulo;3;;;;;string;T_GC_MAE_SESION_APRENDIZAJE_EVENTO;fn_transform_ClearString(Titulo)
+Horas;4;;;;;double;T_GC_MAE_SESION_APRENDIZAJE_EVENTO;Horas
+Contenido;5;;;;;string;T_GC_MAE_SESION_APRENDIZAJE_EVENTO;fn_transform_ClearString(Contenido)
+UsuarioCreador;6;;;;;double;T_GC_MAE_SESION_APRENDIZAJE_EVENTO;UsuarioCreador
+FechaCreacion;7;;;;;timestamp;T_GC_MAE_SESION_APRENDIZAJE_EVENTO;fn_transform_DatetimeMagic(FechaCreacion,NULL,yyyy-MM-dd HH:mm:ss,1900-01-01 00:00:01)
+UsuarioAccion;8;;;;;double;T_GC_MAE_SESION_APRENDIZAJE_EVENTO;UsuarioAccion
+FechaAccion;9;;;T;;timestamp;T_GC_MAE_SESION_APRENDIZAJE_EVENTO;fn_transform_DatetimeMagic(FechaAccion,NULL,yyyy-MM-dd HH:mm:ss,1900-01-01 00:00:01)
+EstadoId;10;;;;;double;T_GC_MAE_SESION_APRENDIZAJE_EVENTO;EstadoId
+FechaEjecucion;11;;;;;date;T_GC_MAE_SESION_APRENDIZAJE_EVENTO;FechaEjecucion
+FechaReprogramacion;12;;;;;date;T_GC_MAE_SESION_APRENDIZAJE_EVENTO;FechaReprogramacion
+FechaPublicacion;13;;;;;timestamp;T_GC_MAE_SESION_APRENDIZAJE_EVENTO;fn_transform_DatetimeMagic(FechaPublicacion,NULL,yyyy-MM-dd HH:mm:ss,1900-01-01 00:00:01)
+NroSesion;14;;;;;double;T_GC_MAE_SESION_APRENDIZAJE_EVENTO;NroSesion
+RolId;15;;;;;double;T_GC_MAE_SESION_APRENDIZAJE_EVENTO;RolId
+FechaEntrega;16;;;;;timestamp;T_GC_MAE_SESION_APRENDIZAJE_EVENTO;fn_transform_DatetimeMagic(FechaEntrega,NULL,yyyy-MM-dd HH:mm:ss,1900-01-01 00:00:01)
+Proposito;17;;;;;string;T_GC_MAE_SESION_APRENDIZAJE_EVENTO;fn_transform_ClearString(Proposito)
+ArchivoId;18;;;;;string;T_GC_MAE_SESION_APRENDIZAJE_EVENTO;fn_transform_ClearString(ArchivoId)
+ProcesoAprendizajeId;19;;;;;double;T_GC_MAE_SESION_APRENDIZAJE_EVENTO;ProcesoAprendizajeId
+SesionAprendizajeBaseId;20;;;;;double;T_GC_MAE_SESION_APRENDIZAJE_EVENTO;SesionAprendizajeBaseId
+EstadoEjecucionId;21;;;;;double;T_GC_MAE_SESION_APRENDIZAJE_EVENTO;EstadoEjecucionId
+FechaRealizada;22;;;;;timestamp;T_GC_MAE_SESION_APRENDIZAJE_EVENTO;fn_transform_DatetimeMagic(FechaRealizada,NULL,yyyy-MM-dd HH:mm:ss,1900-01-01 00:00:01)
+EstadoVerificacionId;23;;;;;double;T_GC_MAE_SESION_APRENDIZAJE_EVENTO;EstadoVerificacionId
+PathPDF;24;;;;;string;T_GC_MAE_SESION_APRENDIZAJE_EVENTO;fn_transform_ClearString(PathPDF)
+PathPDFMultiple;25;;;;;string;T_GC_MAE_SESION_APRENDIZAJE_EVENTO;fn_transform_ClearString(PathPDFMultiple)
+FechaEjecucionFin;26;;;;;timestamp;T_GC_MAE_SESION_APRENDIZAJE_EVENTO;fn_transform_DatetimeMagic(FechaEjecucionFin,NULL,yyyy-MM-dd HH:mm:ss,1900-01-01 00:00:01)
+EstadoEvaluacion;27;;;;;string;T_GC_MAE_SESION_APRENDIZAJE_EVENTO;fn_transform_ClearString(EstadoEvaluacion)
+Evaluados;28;;;;;double;T_GC_MAE_SESION_APRENDIZAJE_EVENTO;Evaluados
+DocenteId;29;;;;;double;T_GC_MAE_SESION_APRENDIZAJE_EVENTO;DocenteId
+ParentSesionId;30;;;;;double;T_GC_MAE_SESION_APRENDIZAJE_EVENTO;ParentSesionId
+Recomendados;31;;;;;double;T_GC_MAE_SESION_APRENDIZAJE_EVENTO;Recomendados
+CodigoExternoId;32;;;;;string;T_GC_MAE_SESION_APRENDIZAJE_EVENTO;fn_transform_ClearString(CodigoExternoId)
+IgnorarMonitoreo;33;;;;;string;T_GC_MAE_SESION_APRENDIZAJE_EVENTO;fn_transform_ClearString(IgnorarMonitoreo)
+EtiquetaId;34;;;;;double;T_GC_MAE_SESION_APRENDIZAJE_EVENTO;EtiquetaId
+OcultarColegas;35;;;;;string;T_GC_MAE_SESION_APRENDIZAJE_EVENTO;fn_transform_ClearString(OcultarColegas)
+FechaCertificado;37;;;;;timestamp;T_GC_MAE_SESION_APRENDIZAJE_EVENTO;fn_transform_DatetimeMagic(FechaCertificado,NULL,yyyy-MM-dd HH:mm:ss,1900-01-01 00:00:01)
+CodigoCompartir;38;;;;;string;T_GC_MAE_SESION_APRENDIZAJE_EVENTO;fn_transform_ClearString(CodigoCompartir)
+SilaboEventoId;1;;T;;;double;T_GC_MAE_SILABO_EVENTO;SilaboEventoId
+Titulo;2;;;;;string;T_GC_MAE_SILABO_EVENTO;fn_transform_ClearString(Titulo)
+DescripcionGeneral;3;;;;;string;T_GC_MAE_SILABO_EVENTO;fn_transform_ClearString(DescripcionGeneral)
+PlanCursoId;4;;;;;double;T_GC_MAE_SILABO_EVENTO;PlanCursoId
+EntidadId;5;;;;;double;T_GC_MAE_SILABO_EVENTO;EntidadId
+DocenteId;6;;;;;double;T_GC_MAE_SILABO_EVENTO;DocenteId
+SeccionId;7;;;;;double;T_GC_MAE_SILABO_EVENTO;SeccionId
+FechaInicio;8;;;;;date;T_GC_MAE_SILABO_EVENTO;FechaInicio
+FechaFin;9;;;;;date;T_GC_MAE_SILABO_EVENTO;FechaFin
+UsuarioCreadorId;10;;;;;double;T_GC_MAE_SILABO_EVENTO;UsuarioCreadorId
+FechaCreacion;11;;;;;timestamp;T_GC_MAE_SILABO_EVENTO;fn_transform_DatetimeMagic(FechaCreacion,NULL,yyyy-MM-dd HH:mm:ss,1900-01-01 00:00:01)
+UsuarioAccionId;12;;;;;double;T_GC_MAE_SILABO_EVENTO;UsuarioAccionId
+FechaAccion;13;;;T;;timestamp;T_GC_MAE_SILABO_EVENTO;fn_transform_DatetimeMagic(FechaAccion,NULL,yyyy-MM-dd HH:mm:ss,1900-01-01 00:00:01)
+EstadoId;14;;;;;double;T_GC_MAE_SILABO_EVENTO;EstadoId
+AnioAcademicoId;15;;;;;double;T_GC_MAE_SILABO_EVENTO;AnioAcademicoId
+GeoreferenciaId;16;;;;;double;T_GC_MAE_SILABO_EVENTO;GeoreferenciaId
+SilaboBaseId;17;;;;;double;T_GC_MAE_SILABO_EVENTO;SilaboBaseId
+OrganigramaId;18;;;;;double;T_GC_MAE_SILABO_EVENTO;OrganigramaId
+CargaCursoId;19;;;;;double;T_GC_MAE_SILABO_EVENTO;CargaCursoId
+TrabajoxIDCs;20;;;;;double;T_GC_MAE_SILABO_EVENTO;TrabajoxIDCs
+EstadoPlanCB;21;;;;;string;T_GC_MAE_SILABO_EVENTO;fn_transform_ClearString(EstadoPlanCB)
+EstadoPlanCTET;22;;;;;string;T_GC_MAE_SILABO_EVENTO;fn_transform_ClearString(EstadoPlanCTET)
+ParametroDisenioId;23;;;;;double;T_GC_MAE_SILABO_EVENTO;ParametroDisenioId
+CompetenciaTId;24;;;;;double;T_GC_MAE_SILABO_EVENTO;CompetenciaTId
+PeriodoId;25;;;;;double;T_GC_MAE_SILABO_EVENTO;PeriodoId
+ProgramaId;26;;;;;double;T_GC_MAE_SILABO_EVENTO;ProgramaId
+CodigoExternoId;27;;;;;string;T_GC_MAE_SILABO_EVENTO;fn_transform_ClearString(CodigoExternoId)
+DataExterna;28;;;;;string;T_GC_MAE_SILABO_EVENTO;fn_transform_ClearString(DataExterna)
+TareaId;1;;T;;;string;T_GC_MAE_TAREA_EVENTO;fn_transform_ClearString(TareaId)
+Titulo;2;;;;;string;T_GC_MAE_TAREA_EVENTO;fn_transform_ClearString(Titulo)
+Instrucciones;3;;;;;string;T_GC_MAE_TAREA_EVENTO;fn_transform_ClearString(Instrucciones)
+FechaCreacion;4;;;;;timestamp;T_GC_MAE_TAREA_EVENTO;fn_transform_DatetimeMagic(FechaCreacion,NULL,yyyy-MM-dd HH:mm:ss,1900-01-01 00:00:01)
+UsuarioCreadorId;5;;;;;double;T_GC_MAE_TAREA_EVENTO;UsuarioCreadorId
+FechaAccion;6;;;T;;timestamp;T_GC_MAE_TAREA_EVENTO;fn_transform_DatetimeMagic(FechaAccion,NULL,yyyy-MM-dd HH:mm:ss,1900-01-01 00:00:01)
+UsuarioAccionId;7;;;;;double;T_GC_MAE_TAREA_EVENTO;UsuarioAccionId
+EstadoId;8;;;;;double;T_GC_MAE_TAREA_EVENTO;EstadoId
+UnidadAprendizajeId;9;;;;;double;T_GC_MAE_TAREA_EVENTO;UnidadAprendizajeId
+SesionAprendizajeId;10;;;;;double;T_GC_MAE_TAREA_EVENTO;SesionAprendizajeId
+FechaEntrega;11;;;;;timestamp;T_GC_MAE_TAREA_EVENTO;fn_transform_DatetimeMagic(FechaEntrega,NULL,yyyy-MM-dd HH:mm:ss,1900-01-01 00:00:01)
+HoraEntrega;12;;;;;timestamp;T_GC_MAE_TAREA_EVENTO;fn_transform_DatetimeMagic(HoraEntrega,NULL,yyyy-MM-dd HH:mm:ss,1900-01-01 00:00:01)
+TareaBaseId;13;;;;;double;T_GC_MAE_TAREA_EVENTO;TareaBaseId
+GrupoIndividual;14;;;;;string;T_GC_MAE_TAREA_EVENTO;fn_transform_ClearString(GrupoIndividual)
+UnidadAprendizajeId;1;;T;;;double;T_GC_MAE_UNIDAD_APRENDIZAJE_EVENTO;UnidadAprendizajeId
+NroUnidad;2;;;;;double;T_GC_MAE_UNIDAD_APRENDIZAJE_EVENTO;NroUnidad
+Titulo;3;;;;;string;T_GC_MAE_UNIDAD_APRENDIZAJE_EVENTO;fn_transform_ClearString(Titulo)
+SituacionSignificativa;4;;;;;string;T_GC_MAE_UNIDAD_APRENDIZAJE_EVENTO;fn_transform_ClearString(SituacionSignificativa)
+NroSemanas;5;;;;;double;T_GC_MAE_UNIDAD_APRENDIZAJE_EVENTO;NroSemanas
+NroHoras;6;;;;;double;T_GC_MAE_UNIDAD_APRENDIZAJE_EVENTO;NroHoras
+NroSesiones;7;;;;;double;T_GC_MAE_UNIDAD_APRENDIZAJE_EVENTO;NroSesiones
+UsuarioCreador;8;;;;;double;T_GC_MAE_UNIDAD_APRENDIZAJE_EVENTO;UsuarioCreador
+FechaCreacion;9;;;;;timestamp;T_GC_MAE_UNIDAD_APRENDIZAJE_EVENTO;fn_transform_DatetimeMagic(FechaCreacion,NULL,yyyy-MM-dd HH:mm:ss,1900-01-01 00:00:01)
+UsuarioAccion;10;;;;;double;T_GC_MAE_UNIDAD_APRENDIZAJE_EVENTO;UsuarioAccion
+FechaAccion;11;;;T;;timestamp;T_GC_MAE_UNIDAD_APRENDIZAJE_EVENTO;fn_transform_DatetimeMagic(FechaAccion,NULL,yyyy-MM-dd HH:mm:ss,1900-01-01 00:00:01)
+EstadoId;12;;;;;double;T_GC_MAE_UNIDAD_APRENDIZAJE_EVENTO;EstadoId
+SilaboEventoId;13;;;;;double;T_GC_MAE_UNIDAD_APRENDIZAJE_EVENTO;SilaboEventoId
+SituacionSignificativaComplementaria;14;;;;;string;T_GC_MAE_UNIDAD_APRENDIZAJE_EVENTO;fn_transform_ClearString(SituacionSignificativaComplementaria)
+Desafio;15;;;;;string;T_GC_MAE_UNIDAD_APRENDIZAJE_EVENTO;fn_transform_ClearString(Desafio)
+Reto;16;;;;;string;T_GC_MAE_UNIDAD_APRENDIZAJE_EVENTO;fn_transform_ClearString(Reto)
+UnidadAprendizajeBaseId;17;;;;;double;T_GC_MAE_UNIDAD_APRENDIZAJE_EVENTO;UnidadAprendizajeBaseId
+CodigoExternoId;18;;;;;string;T_GC_MAE_UNIDAD_APRENDIZAJE_EVENTO;fn_transform_ClearString(CodigoExternoId)
+TareaId;1;;T;;;string;T_GC_MOV_ESTADO_ENTREGA_TAREA;fn_transform_ClearString(TareaId)
+AlumnoId;2;;;;;double;T_GC_MOV_ESTADO_ENTREGA_TAREA;AlumnoId
+Entregado;3;;;;;string;T_GC_MOV_ESTADO_ENTREGA_TAREA;fn_transform_ClearString(Entregado)
+UsuarioAccionId;4;;;;;double;T_GC_MOV_ESTADO_ENTREGA_TAREA;UsuarioAccionId
+FechaAccion;5;;;T;;timestamp;T_GC_MOV_ESTADO_ENTREGA_TAREA;fn_transform_DatetimeMagic(FechaAccion,NULL,yyyy-MM-dd HH:mm:ss,1900-01-01 00:00:01)
+SilaboEventoId;1;;T;;;double;T_GC_REL_PRODUCTO_EVENTO_REFERENCIA;SilaboEventoId
+UnidadAprendizajeId;2;;;;;double;T_GC_REL_PRODUCTO_EVENTO_REFERENCIA;UnidadAprendizajeId
+SesionAprendizajeId;3;;;;;double;T_GC_REL_PRODUCTO_EVENTO_REFERENCIA;SesionAprendizajeId
+ProductoAprendizajeId;4;;;;;double;T_GC_REL_PRODUCTO_EVENTO_REFERENCIA;ProductoAprendizajeId
+RecursoReferenciaId;1;;T;;;double;T_GC_REL_RECURSO_EVENTO_REFERENCIA;RecursoReferenciaId
+RecursoDidacticoId;2;;;;;string;T_GC_REL_RECURSO_EVENTO_REFERENCIA;fn_transform_ClearString(RecursoDidacticoId)
+SilaboEventoId;3;;;;;double;T_GC_REL_RECURSO_EVENTO_REFERENCIA;SilaboEventoId
+UnidadAprendizajeId;4;;;;;double;T_GC_REL_RECURSO_EVENTO_REFERENCIA;UnidadAprendizajeId
+SesionAprendizajeId;5;;;;;double;T_GC_REL_RECURSO_EVENTO_REFERENCIA;SesionAprendizajeId
+ActividadAprendizajeId;6;;;;;double;T_GC_REL_RECURSO_EVENTO_REFERENCIA;ActividadAprendizajeId
+RecursoReferenciaBaseId;7;;;;;double;T_GC_REL_RECURSO_EVENTO_REFERENCIA;RecursoReferenciaBaseId
+TipoRecursoId;8;;;;;double;T_GC_REL_RECURSO_EVENTO_REFERENCIA;TipoRecursoId
+Oculto;9;;;;;string;T_GC_REL_RECURSO_EVENTO_REFERENCIA;fn_transform_ClearString(Oculto)
+FechaCreacion;10;;;;;timestamp;T_GC_REL_RECURSO_EVENTO_REFERENCIA;fn_transform_DatetimeMagic(FechaCreacion,NULL,yyyy-MM-dd HH:mm:ss,1900-01-01 00:00:01)
+FechaAccion;11;;;T;;timestamp;T_GC_REL_RECURSO_EVENTO_REFERENCIA;fn_transform_DatetimeMagic(FechaAccion,NULL,yyyy-MM-dd HH:mm:ss,1900-01-01 00:00:01)
+UsuarioCreacion;12;;;;;double;T_GC_REL_RECURSO_EVENTO_REFERENCIA;UsuarioCreacion
+UsuarioAccion;13;;;;;double;T_GC_REL_RECURSO_EVENTO_REFERENCIA;UsuarioAccion
+UnidadAprendizajeId;1;;T;;;double;T_GC_REL_UNIDAD_APREN_EVENTO_TIPO;UnidadAprendizajeId
+TipoId;2;;;;;double;T_GC_REL_UNIDAD_APREN_EVENTO_TIPO;TipoId
+InstrumentoEvalId;1;;T;;;double;T_GIE_MAE_INSTRUMENTO_EVALUACION;InstrumentoEvalId
+Nombre;2;;;;;string;T_GIE_MAE_INSTRUMENTO_EVALUACION;fn_transform_ClearString(Nombre)
+Descripcion;3;;;;;string;T_GIE_MAE_INSTRUMENTO_EVALUACION;fn_transform_ClearString(Descripcion)
+TipoInstrumentoId;4;;;;;double;T_GIE_MAE_INSTRUMENTO_EVALUACION;TipoInstrumentoId
+EntidadId;5;;;;;double;T_GIE_MAE_INSTRUMENTO_EVALUACION;EntidadId
+GeoreferenciaId;6;;;;;double;T_GIE_MAE_INSTRUMENTO_EVALUACION;GeoreferenciaId
+AreaInstrumentoId;7;;;;;double;T_GIE_MAE_INSTRUMENTO_EVALUACION;AreaInstrumentoId
+Confiabilidad;8;;;;;double;T_GIE_MAE_INSTRUMENTO_EVALUACION;Confiabilidad
+FechaCreacion;9;;;;;timestamp;T_GIE_MAE_INSTRUMENTO_EVALUACION;fn_transform_DatetimeMagic(FechaCreacion,NULL,yyyy-MM-dd HH:mm:ss,1900-01-01 00:00:01)
+FechaActualizacion;10;;;T;;timestamp;T_GIE_MAE_INSTRUMENTO_EVALUACION;fn_transform_DatetimeMagic(FechaActualizacion,NULL,yyyy-MM-dd HH:mm:ss,1900-01-01 00:00:01)
+UsuarioCreadorId;11;;;;;double;T_GIE_MAE_INSTRUMENTO_EVALUACION;UsuarioCreadorId
+UsuarioAccionId;12;;;;;double;T_GIE_MAE_INSTRUMENTO_EVALUACION;UsuarioAccionId
+Imagen;13;;;;;string;T_GIE_MAE_INSTRUMENTO_EVALUACION;fn_transform_ClearString(Imagen)
+Icono;14;;;;;string;T_GIE_MAE_INSTRUMENTO_EVALUACION;fn_transform_ClearString(Icono)
+Encuesta;15;;;;;string;T_GIE_MAE_INSTRUMENTO_EVALUACION;fn_transform_ClearString(Encuesta)
+Alcance;16;;;;;string;T_GIE_MAE_INSTRUMENTO_EVALUACION;fn_transform_ClearString(Alcance)
+Comprobacion;17;;;;;string;T_GIE_MAE_INSTRUMENTO_EVALUACION;fn_transform_ClearString(Comprobacion)
+Publicado;18;;;;;string;T_GIE_MAE_INSTRUMENTO_EVALUACION;fn_transform_ClearString(Publicado)
+UsuarioId;19;;;;;double;T_GIE_MAE_INSTRUMENTO_EVALUACION;UsuarioId
+SilaboId;20;;;;;double;T_GIE_MAE_INSTRUMENTO_EVALUACION;SilaboId
+UnidadId;21;;;;;double;T_GIE_MAE_INSTRUMENTO_EVALUACION;UnidadId
+SesionId;22;;;;;double;T_GIE_MAE_INSTRUMENTO_EVALUACION;SesionId
+Estado;23;;;;;string;T_GIE_MAE_INSTRUMENTO_EVALUACION;fn_transform_ClearString(Estado)
+Corporativa;24;;;;;string;T_GIE_MAE_INSTRUMENTO_EVALUACION;fn_transform_ClearString(Corporativa)
+InstrumentoEvalParentId;25;;;;;double;T_GIE_MAE_INSTRUMENTO_EVALUACION;InstrumentoEvalParentId
+CantidadPreguntas;26;;;;;double;T_GIE_MAE_INSTRUMENTO_EVALUACION;CantidadPreguntas
+InstrumentoEvalExternoId;27;;;;;double;T_GIE_MAE_INSTRUMENTO_EVALUACION;InstrumentoEvalExternoId
+Privado;28;;;;;string;T_GIE_MAE_INSTRUMENTO_EVALUACION;fn_transform_ClearString(Privado)
+ClaseColor;29;;;;;string;T_GIE_MAE_INSTRUMENTO_EVALUACION;fn_transform_ClearString(ClaseColor)
+EstadoId;30;;;;;double;T_GIE_MAE_INSTRUMENTO_EVALUACION;EstadoId
+OrigenInstrumentoId;31;;;;;double;T_GIE_MAE_INSTRUMENTO_EVALUACION;OrigenInstrumentoId
+CantPregSRCs;32;;;;;double;T_GIE_MAE_INSTRUMENTO_EVALUACION;CantPregSRCs
+TipoGraficoId;33;;;;;double;T_GIE_MAE_INSTRUMENTO_EVALUACION;TipoGraficoId
+ProcessAuto;34;;;;;string;T_GIE_MAE_INSTRUMENTO_EVALUACION;fn_transform_ClearString(ProcessAuto)
+RevolverPreguntas;35;;;;;string;T_GIE_MAE_INSTRUMENTO_EVALUACION;fn_transform_ClearString(RevolverPreguntas)
+RevolverOpciones;36;;;;;string;T_GIE_MAE_INSTRUMENTO_EVALUACION;fn_transform_ClearString(RevolverOpciones)
+Instrucciones;37;;;;;string;T_GIE_MAE_INSTRUMENTO_EVALUACION;fn_transform_ClearString(Instrucciones)
+TipoInstruccion;38;;;;;string;T_GIE_MAE_INSTRUMENTO_EVALUACION;fn_transform_ClearString(TipoInstruccion)
+ControlTiempo;39;;;;;string;T_GIE_MAE_INSTRUMENTO_EVALUACION;fn_transform_ClearString(ControlTiempo)
+NavegabilidadPreg;40;;;;;string;T_GIE_MAE_INSTRUMENTO_EVALUACION;fn_transform_ClearString(NavegabilidadPreg)
+Tiempo;41;;;;;double;T_GIE_MAE_INSTRUMENTO_EVALUACION;Tiempo
+OtroTC;42;;;;;string;T_GIE_MAE_INSTRUMENTO_EVALUACION;fn_transform_ClearString(OtroTC)
+DescripcionInforme;43;;;;;string;T_GIE_MAE_INSTRUMENTO_EVALUACION;fn_transform_ClearString(DescripcionInforme)
+RubroEvalProcesoId;1;;T;;;string;T_RN_MAE_RUBRO_EVALUACION_PROCESO;fn_transform_ClearString(RubroEvalProcesoId)
+Titulo;2;;;;;string;T_RN_MAE_RUBRO_EVALUACION_PROCESO;fn_transform_ClearString(Titulo)
+Subtitulo;3;;;;;string;T_RN_MAE_RUBRO_EVALUACION_PROCESO;fn_transform_ClearString(Subtitulo)
+TipoNotaId;4;;;;;string;T_RN_MAE_RUBRO_EVALUACION_PROCESO;fn_transform_ClearString(TipoNotaId)
+ColorFondo;5;;;;;string;T_RN_MAE_RUBRO_EVALUACION_PROCESO;fn_transform_ClearString(ColorFondo)
+MColorFondo;6;;;;;string;T_RN_MAE_RUBRO_EVALUACION_PROCESO;fn_transform_ClearString(MColorFondo)
+ValorDefecto;7;;;;;string;T_RN_MAE_RUBRO_EVALUACION_PROCESO;fn_transform_ClearString(ValorDefecto)
+AnchoColumna;8;;;;;string;T_RN_MAE_RUBRO_EVALUACION_PROCESO;fn_transform_ClearString(AnchoColumna)
+OcultarColumna;9;;;;;string;T_RN_MAE_RUBRO_EVALUACION_PROCESO;fn_transform_ClearString(OcultarColumna)
+TipoFormulaId;10;;;;;double;T_RN_MAE_RUBRO_EVALUACION_PROCESO;TipoFormulaId
+SilaboEventoId;11;;;;;double;T_RN_MAE_RUBRO_EVALUACION_PROCESO;SilaboEventoId
+TipoRedondeoId;12;;;;;double;T_RN_MAE_RUBRO_EVALUACION_PROCESO;TipoRedondeoId
+ValorRedondeoId;13;;;;;double;T_RN_MAE_RUBRO_EVALUACION_PROCESO;ValorRedondeoId
+UsuarioCreacionId;14;;;;;double;T_RN_MAE_RUBRO_EVALUACION_PROCESO;UsuarioCreacionId
+FechaCreacion;15;;;;;timestamp;T_RN_MAE_RUBRO_EVALUACION_PROCESO;fn_transform_DatetimeMagic(FechaCreacion,NULL,yyyy-MM-dd HH:mm:ss,1900-01-01 00:00:01)
+UsuarioAccionId;16;;;;;double;T_RN_MAE_RUBRO_EVALUACION_PROCESO;UsuarioAccionId
+FechaAccion;17;;;T;;timestamp;T_RN_MAE_RUBRO_EVALUACION_PROCESO;fn_transform_DatetimeMagic(FechaAccion,NULL,yyyy-MM-dd HH:mm:ss,1900-01-01 00:00:01)
+EstadoId;18;;;;;double;T_RN_MAE_RUBRO_EVALUACION_PROCESO;EstadoId
+RubroEvalResultadoId;19;;;;;double;T_RN_MAE_RUBRO_EVALUACION_PROCESO;RubroEvalResultadoId
+EscalaEvaluacionId;20;;;;;double;T_RN_MAE_RUBRO_EVALUACION_PROCESO;EscalaEvaluacionId
+TipoEvaluacionId;21;;;;;double;T_RN_MAE_RUBRO_EVALUACION_PROCESO;TipoEvaluacionId
+DesempenioIcdId;22;;;;;double;T_RN_MAE_RUBRO_EVALUACION_PROCESO;DesempenioIcdId
+TipoRubroId;23;;;;;double;T_RN_MAE_RUBRO_EVALUACION_PROCESO;TipoRubroId
+SesionAprendizajeId;24;;;;;double;T_RN_MAE_RUBRO_EVALUACION_PROCESO;SesionAprendizajeId
+CompetenciaId;25;;;;;double;T_RN_MAE_RUBRO_EVALUACION_PROCESO;CompetenciaId
+CalendarioPeriodoId;26;;;;;double;T_RN_MAE_RUBRO_EVALUACION_PROCESO;CalendarioPeriodoId
+FormaEvaluacionId;27;;;;;double;T_RN_MAE_RUBRO_EVALUACION_PROCESO;FormaEvaluacionId
+UnidadAprendizajeId;28;;;;;double;T_RN_MAE_RUBRO_EVALUACION_PROCESO;UnidadAprendizajeId
+RubroFormal;29;;;;;string;T_RN_MAE_RUBRO_EVALUACION_PROCESO;fn_transform_ClearString(RubroFormal)
+Promedio;30;;;;;double;T_RN_MAE_RUBRO_EVALUACION_PROCESO;Promedio
+DesviacionEstandar;31;;;;;double;T_RN_MAE_RUBRO_EVALUACION_PROCESO;DesviacionEstandar
+Msje;32;;;;;string;T_RN_MAE_RUBRO_EVALUACION_PROCESO;fn_transform_ClearString(Msje)
+TipoCalendarioPeriodoId;33;;;;;double;T_RN_MAE_RUBRO_EVALUACION_PROCESO;TipoCalendarioPeriodoId
+SilaboBaseId;34;;;;;double;T_RN_MAE_RUBRO_EVALUACION_PROCESO;SilaboBaseId
+RubroEvalProcesoBaseId;35;;;;;string;T_RN_MAE_RUBRO_EVALUACION_PROCESO;fn_transform_ClearString(RubroEvalProcesoBaseId)
+EstrategiaEvaluacionId;36;;;;;double;T_RN_MAE_RUBRO_EVALUACION_PROCESO;EstrategiaEvaluacionId
+TareaId;37;;;;;string;T_RN_MAE_RUBRO_EVALUACION_PROCESO;fn_transform_ClearString(TareaId)
+InstrumentoEvalId;38;;;;;double;T_RN_MAE_RUBRO_EVALUACION_PROCESO;InstrumentoEvalId
+RutaAprendizajeId;39;;;;;double;T_RN_MAE_RUBRO_EVALUACION_PROCESO;RutaAprendizajeId
+Peso;40;;;;;double;T_RN_MAE_RUBRO_EVALUACION_PROCESO;Peso
+PreguntaId;41;;;;;string;T_RN_MAE_RUBRO_EVALUACION_PROCESO;fn_transform_ClearString(PreguntaId)
+ProcesadoTablero;42;;;;;string;T_RN_MAE_RUBRO_EVALUACION_PROCESO;fn_transform_ClearString(ProcesadoTablero)
+Orden;43;;;;;double;T_RN_MAE_RUBRO_EVALUACION_PROCESO;Orden
+EvaluacionProcesoId;1;;T;;;string;T_RN_MOV_EVALUACION_PROCESO;fn_transform_ClearString(EvaluacionProcesoId)
+EvaluacionResultadoId;2;;;;;double;T_RN_MOV_EVALUACION_PROCESO;EvaluacionResultadoId
+Nota;3;;;;;double;T_RN_MOV_EVALUACION_PROCESO;Nota
+Escala;4;;;;;string;T_RN_MOV_EVALUACION_PROCESO;fn_transform_ClearString(Escala)
+RubroEvalProcesoId;5;;;;;string;T_RN_MOV_EVALUACION_PROCESO;fn_transform_ClearString(RubroEvalProcesoId)
+UsuarioCreadorId;6;;;;;double;T_RN_MOV_EVALUACION_PROCESO;UsuarioCreadorId
+FechaCreacion;7;;;;;timestamp;T_RN_MOV_EVALUACION_PROCESO;fn_transform_DatetimeMagic(FechaCreacion,NULL,yyyy-MM-dd HH:mm:ss,1900-01-01 00:00:01)
+UsuarioAccionId;8;;;;;double;T_RN_MOV_EVALUACION_PROCESO;UsuarioAccionId
+FechaAccion;9;;;T;;timestamp;T_RN_MOV_EVALUACION_PROCESO;fn_transform_DatetimeMagic(FechaAccion,NULL,yyyy-MM-dd HH:mm:ss,1900-01-01 00:00:01)
+AlumnoId;10;;;;;double;T_RN_MOV_EVALUACION_PROCESO;AlumnoId
+ValorTipoNotaId;11;;;;;string;T_RN_MOV_EVALUACION_PROCESO;fn_transform_ClearString(ValorTipoNotaId)
+EquipoId;12;;;;;string;T_RN_MOV_EVALUACION_PROCESO;fn_transform_ClearString(EquipoId)
+CalendarioPeriodoId;13;;;;;double;T_RN_MOV_EVALUACION_PROCESO;CalendarioPeriodoId
+Msje;14;;;;;string;T_RN_MOV_EVALUACION_PROCESO;fn_transform_ClearString(Msje)
+Publicado;15;;;;;string;T_RN_MOV_EVALUACION_PROCESO;fn_transform_ClearString(Publicado)
+Visto;16;;;;;string;T_RN_MOV_EVALUACION_PROCESO;fn_transform_ClearString(Visto)
+Id;1;;T;;;double;TIPOS;Id
+Objeto;2;;;;;string;TIPOS;fn_transform_ClearString(Objeto)
+Concepto;3;;;;;string;TIPOS;fn_transform_ClearString(Concepto)
+Nombre;4;;;;;string;TIPOS;fn_transform_ClearString(Nombre)
+GeoReferenciaId;5;;;;;double;TIPOS;GeoReferenciaId
+OrganigramaId;6;;;;;double;TIPOS;OrganigramaId
+EstadoId;7;;;;;double;TIPOS;EstadoId
+FechaCreacion;8;;;;;timestamp;TIPOS;fn_transform_DatetimeMagic(FechaCreacion,NULL,yyyy-MM-dd HH:mm:ss,1900-01-01 00:00:01)
+FechaActualizacion;9;;;T;;timestamp;TIPOS;fn_transform_DatetimeMagic(FechaActualizacion,NULL,yyyy-MM-dd HH:mm:ss,1900-01-01 00:00:01)
+UsuarioAccionId;10;;;;;double;TIPOS;UsuarioAccionId
+Estatico;11;;;;;string;TIPOS;fn_transform_ClearString(Estatico)
+UsuarioCreadorId;12;;;;;double;TIPOS;UsuarioCreadorId
+Icon;13;;;;;string;TIPOS;fn_transform_ClearString(Icon)
+Codigo;14;;;;;string;TIPOS;fn_transform_ClearString(Codigo)
+IdExterno;15;;;;;double;TIPOS;IdExterno
+IdEntidad;16;;;;;double;TIPOS;IdEntidad
+ParentId;17;;;;;double;TIPOS;ParentId
+NotaMaxima;18;;;;;string;TIPOS;fn_transform_ClearString(NotaMaxima)
+Color;19;;;;;string;TIPOS;fn_transform_ClearString(Color)
+Alcance;20;;;;;string;TIPOS;fn_transform_ClearString(Alcance)

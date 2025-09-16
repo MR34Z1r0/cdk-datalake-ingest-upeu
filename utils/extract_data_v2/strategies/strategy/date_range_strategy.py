@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 from typing import List, Dict, Any
 from datetime import datetime, timedelta
-from base_strategy import BaseStrategy
+from strategies.strategy.base_strategy import BaseStrategy
 from utils.date_utils import transform_to_datetime
 from exceptions.custom_exceptions import ConfigurationError
 

@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 from typing import List, Dict, Any
-from base_strategy import BaseStrategy
+from strategies.strategy.base_strategy import BaseStrategy
 from utils.date_utils import get_date_limits
 from exceptions.custom_exceptions import ConfigurationError
 

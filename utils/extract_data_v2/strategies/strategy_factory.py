@@ -3,10 +3,10 @@ from typing import Dict, Type
 from interfaces.strategy_interface import StrategyInterface
 from models.table_config import TableConfig
 from models.extraction_config import ExtractionConfig
-from strategy.full_load_strategy import FullLoadStrategy
-from strategy.incremental_strategy import IncrementalStrategy
-from strategy.date_range_strategy import DateRangeStrategy
-from strategy.partitioned_strategy import PartitionedStrategy
+from strategies.strategy.full_load_strategy import FullLoadStrategy
+from strategies.strategy.incremental_strategy import IncrementalStrategy
+from strategies.strategy.date_range_strategy import DateRangeStrategy
+from strategies.strategy.partitioned_strategy import PartitionedStrategy
 from exceptions.custom_exceptions import ConfigurationError
 
 class StrategyFactory:

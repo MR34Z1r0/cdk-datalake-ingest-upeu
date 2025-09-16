@@ -6,9 +6,9 @@ from typing import Dict, Any, Optional
 class Settings:
     """Central configuration management"""
     
-    def __init__(self):
-        # Determine if running in AWS or locally
-        self.is_aws_glue = self._detect_aws_glue()
+    def __init__(self, force_glue: Optional[bool] = None):
+        # Allow explicit override or detect automatically
+        self.is_aws_glue = force_glue if force_glue is not None else self._detect_aws_glue()
         self.is_aws_s3 = self._detect_aws_s3()
         
         # Load configuration
@@ -28,24 +28,19 @@ class Settings:
     def _setup_aws_session(self):
         """Setup AWS session with profile or default credentials"""
         try:
-            # Get AWS configuration from settings
             region_name = self._config.get('REGION', 'us-east-1')
             profile_name = self._config.get('AWS_PROFILE')
             
-            # Setup session based on environment
             if not self.is_aws_glue and profile_name:
-                # Local development with profile
                 boto3.setup_default_session(
                     profile_name=profile_name,
                     region_name=region_name
                 )
                 print(f"✅ AWS Session configured with profile: {profile_name}, region: {region_name}")
             elif not self.is_aws_glue:
-                # Local development without profile (uses default credentials)
                 boto3.setup_default_session(region_name=region_name)
                 print(f"✅ AWS Session configured with default credentials, region: {region_name}")
             else:
-                # AWS Glue environment - uses IAM role
                 print(f"✅ AWS Glue environment detected, using IAM role, region: {region_name}")
                 
         except Exception as e:
@@ -62,8 +57,12 @@ class Settings:
     def _load_glue_config(self) -> Dict[str, Any]:
         """Load configuration from AWS Glue job parameters"""
         try:
-            from awsglue.utils import getResolvedOptions
-            import sys
+            try:
+                from awsglue.utils import getResolvedOptions
+                import sys
+            except ImportError:
+                print("⚠️ AWS Glue libraries not found. Falling back to local config.")
+                return self._load_local_config()
             
             args = getResolvedOptions(sys.argv, [
                 'S3_RAW_BUCKET', 'PROJECT_NAME', 'TEAM', 'DATA_SOURCE', 
@@ -72,7 +71,6 @@ class Settings:
                 'ENDPOINT_NAME', 'ARN_TOPIC_FAILED'
             ])
             
-            # Optional parameters
             force_full_load = args.get('FORCE_FULL_LOAD', 'false').lower() == 'true'
             max_threads = int(args.get('MAX_THREADS', '6'))
             chunk_size = int(args.get('CHUNK_SIZE', '1000000'))
@@ -98,12 +96,13 @@ class Settings:
                 'EXTRACTOR_TYPE': args.get('EXTRACTOR_TYPE', 'sqlserver'),
                 'LOADER_TYPE': args.get('LOADER_TYPE', 's3'),
                 'MONITOR_TYPE': args.get('MONITOR_TYPE', 'dynamodb'),
-                # AWS Profile not used in Glue
                 'AWS_PROFILE': None
             }
             
         except Exception as e:
-            raise RuntimeError(f"Failed to load AWS Glue configuration: {e}")
+            print(f"⚠️ Warning: Failed to load AWS Glue configuration: {e}")
+            print("👉 Falling back to local config...")
+            return self._load_local_config()
     
     def _load_local_config(self) -> Dict[str, Any]:
         """Load configuration for local development"""
@@ -128,21 +127,21 @@ class Settings:
             'EXTRACTOR_TYPE': os.getenv('EXTRACTOR_TYPE', 'sqlserver'),
             'LOADER_TYPE': os.getenv('LOADER_TYPE', 's3'),
             'MONITOR_TYPE': os.getenv('MONITOR_TYPE', 'dynamodb'),
-            # AWS Profile configuration
-            'AWS_PROFILE': os.getenv('AWS_PROFILE', 'prd-upeu-admin')  # Default profile
+            'AWS_PROFILE': os.getenv('AWS_PROFILE', 'prd-upeu-admin')
         }
     
     def get(self, key: str, default: Any = None) -> Any:
-        """Get configuration value"""
         return self._config.get(key, default)
     
     def get_all(self) -> Dict[str, Any]:
-        """Get all configuration"""
         return self._config.copy()
     
     def update(self, updates: Dict[str, Any]):
-        """Update configuration"""
         self._config.update(updates)
 
-# Global settings instance
-settings = Settings()
+# Ejemplo de uso:
+# Local sin Glue
+settings = Settings(force_glue=False)
+
+# En Glue
+# settings = Settings(force_glue=True)

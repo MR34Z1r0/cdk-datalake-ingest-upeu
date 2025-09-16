@@ -138,7 +138,7 @@ class SQLServerExtractor(ExtractorInterface):
         """Get password from secrets manager"""
         if not self._secrets_helper:
             # Build secret path from config
-            secret_path = f"{self.config.endpoint_name.lower()}"  # Adjust based on your secret naming
+            secret_path = f"{self.config.secret_name.lower()}"  # Adjust based on your secret naming
             self._secrets_helper = SecretsHelper(secret_path)
         
         self._password = self._secrets_helper.get_secret_value(self.config.secret_key)

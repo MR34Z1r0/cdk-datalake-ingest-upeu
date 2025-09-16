@@ -214,6 +214,10 @@ class DataExtractionOrchestrator:
     
     def _build_database_config(self, db_row: Dict[str, Any]) -> DatabaseConfig:
         """Build DatabaseConfig from CSV row"""
+    
+        # Construir el nombre del secreto basado en la configuración de extracción
+        secret_name = f"{self.extraction_config.environment.lower()}/{self.extraction_config.project_name}/{self.extraction_config.team}/{self.extraction_config.data_source}"
+        
         return DatabaseConfig(
             endpoint_name=db_row.get('ENDPOINT_NAME', ''),
             db_type=db_row.get('BD_TYPE', ''),
@@ -221,7 +225,8 @@ class DataExtractionOrchestrator:
             database=db_row.get('SRC_DB_NAME', ''),
             username=db_row.get('SRC_DB_USERNAME', ''),
             secret_key=db_row.get('SRC_DB_SECRET', ''),
-            port=int(db_row.get('DB_PORT_NUMBER')) if db_row.get('DB_PORT_NUMBER') else None
+            port=int(db_row.get('DB_PORT_NUMBER')) if db_row.get('DB_PORT_NUMBER') else None,
+            secret_name=secret_name
         )
     
     def _process_columns_field(self, columns_str: str) -> str:

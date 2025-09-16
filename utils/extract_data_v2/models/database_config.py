@@ -12,6 +12,7 @@ class DatabaseConfig:
     username: str
     secret_key: str  # Key to get password from secrets
     port: Optional[int] = None
+    secret_name: str
     
     def __post_init__(self):
         """Validate required fields"""

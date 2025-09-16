@@ -136,19 +136,42 @@ class DataExtractionOrchestrator:
             **monitor_config
         )
         
-        # Create strategy
-        self.strategy = StrategyFactory.create(
-            table_config=self.table_config,
-            extraction_config=self.extraction_config,
-            extractor=self.extractor
-        )
+        # Create strategy - Try new factory first, fallback to old
+        try:
+            from strategies.strategy_factory import StrategyFactory
+            from aje_libs.common.logger import custom_logger
+            logger = custom_logger(__name__)
+            
+            logger.info("Attempting to use StrategyFactoryV2")
+            self.strategy = StrategyFactory.create(
+                table_config=self.table_config,
+                extraction_config=self.extraction_config
+            )
+            logger.info("Successfully created strategy using StrategyFactoryV2")
+            
+        except Exception as e:
+            from aje_libs.common.logger import custom_logger
+            logger = custom_logger(__name__)
+            
+            logger.warning(f"StrategyFactoryV2 failed: {e}")
+            logger.info("Falling back to original StrategyFactory")
+            
+            # Fallback to original factory
+            self.strategy = StrategyFactory.create(
+                table_config=self.table_config,
+                extraction_config=self.extraction_config,
+                extractor=self.extractor
+            )
     
     def _load_configurations(self):
         """Load table and database configurations from CSV files"""
         try:
             # Determine if using S3 or local files
             use_s3 = settings.is_aws_s3
-            
+            print("???????????????????????????????????")
+            print(f"use_s3: {use_s3}")
+            print(f"TABLES_CSV_S3: {settings.get('TABLES_CSV_S3')}")
+            print("???????????????????????????????????")
             # Load CSV configurations
             if use_s3:
                 tables_data = CSVConfigLoader.load_from_s3(settings.get('TABLES_CSV_S3'))
@@ -159,10 +182,16 @@ class DataExtractionOrchestrator:
                 credentials_data = CSVConfigLoader.load_from_local(settings.get('CREDENTIALS_CSV_S3'))
                 columns_data = CSVConfigLoader.load_from_local(settings.get('COLUMNS_CSV_S3'))
             # Find table configuration
+            print("***********************************")
+            print(tables_data)
+            print("***********************************")
             table_row = CSVConfigLoader.find_config_by_criteria(
                 tables_data,
                 STAGE_TABLE_NAME=self.extraction_config.table_name
             )
+            print("====================================")
+            print(table_row)
+            print("====================================")
             
             # Find database configuration
             db_row = CSVConfigLoader.find_config_by_criteria(
@@ -180,15 +209,30 @@ class DataExtractionOrchestrator:
     
     def _build_table_config(self, table_row: Dict[str, Any]) -> TableConfig:
         """Build TableConfig from CSV row"""
+        from aje_libs.common.logger import custom_logger
+        logger = custom_logger(__name__)
+        
+        logger.info("=== BUILDING TABLE CONFIG ===")
+        logger.info(f"Raw CSV row LOAD_TYPE: '{table_row.get('LOAD_TYPE', '')}'")
         
         # Apply load type logic - default to 'full' if not explicitly set
         load_type = table_row.get('LOAD_TYPE', '').strip()
+        logger.info(f"After strip - load_type: '{load_type}'")
+        
         if not load_type:
             load_type = 'full'
+            logger.info(f"Empty load_type, setting to 'full': '{load_type}'")
+        
+        logger.info(f"Before force_full_load check - load_type: '{load_type}'")
+        logger.info(f"force_full_load setting: {self.extraction_config.force_full_load}")
         
         # Apply force full load override
         if self.extraction_config.force_full_load and load_type == 'incremental':
             load_type = 'full'
+            logger.info(f"Applied force_full_load override: '{load_type}'")
+        
+        logger.info(f"Final load_type: '{load_type}'")
+        logger.info("=== END BUILDING TABLE CONFIG ===")
         
         return TableConfig(
             stage_table_name=table_row.get('STAGE_TABLE_NAME', ''),
@@ -266,8 +310,26 @@ class DataExtractionOrchestrator:
     
     def _validate_configuration(self):
         """Validate all configurations"""
-        if not self.strategy.validate_config():
-            raise ConfigurationError("Invalid strategy configuration")
+        from aje_libs.common.logger import custom_logger
+        logger = custom_logger(__name__)
+        
+        logger.info("=== STARTING CONFIGURATION VALIDATION ===")
+        
+        try:
+            logger.info("Validating strategy configuration...")
+            if not self.strategy.validate_config():
+                logger.error("❌ Strategy validation failed")
+                raise ConfigurationError("Invalid strategy configuration")
+            else:
+                logger.info("✅ Strategy validation passed")
+        except Exception as e:
+            logger.error(f"Error during strategy validation: {str(e)}")
+            logger.error(f"Exception type: {type(e).__name__}")
+            import traceback
+            logger.error(f"Full traceback: {traceback.format_exc()}")
+            raise
+        
+        logger.info("=== CONFIGURATION VALIDATION COMPLETED ===")
     
     def _execute_extraction_strategy(self) -> ExtractionResult:
         """Execute the extraction strategy"""

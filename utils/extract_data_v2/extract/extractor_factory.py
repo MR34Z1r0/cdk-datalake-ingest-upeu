@@ -2,7 +2,7 @@
 from typing import Dict, Type
 from interfaces.extractor_interface import ExtractorInterface
 from models.database_config import DatabaseConfig
-from extractors.sql_server_extractor import SQLServerExtractor
+from extract.extractors.sql_server_extractor import SQLServerExtractor
 from exceptions.custom_exceptions import ConfigurationError
 
 class ExtractorFactory:

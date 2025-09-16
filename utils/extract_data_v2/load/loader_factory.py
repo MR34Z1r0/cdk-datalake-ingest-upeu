@@ -1,9 +1,9 @@
 # -*- coding: utf-8 -*-
 from typing import Dict, Type, Any
 from interfaces.loader_interface import LoaderInterface
-from loaders.s3_loader import S3Loader
-from formatters.parquet_formatter import ParquetFormatter
-from formatters.csv_formatter import CSVFormatter
+from load.loaders.s3_loader import S3Loader
+from load.formatters.parquet_formatter import ParquetFormatter
+from load.formatters.csv_formatter import CSVFormatter
 from exceptions.custom_exceptions import ConfigurationError
 
 class LoaderFactory:

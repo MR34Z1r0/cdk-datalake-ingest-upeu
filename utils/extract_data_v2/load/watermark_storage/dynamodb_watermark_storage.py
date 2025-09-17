@@ -2,6 +2,7 @@
 from interfaces.watermark_interface import WatermarkStorageInterface
 from aje_libs.common.helpers.dynamodb_helper import DynamoDBHelper
 from utils.date_utils import get_current_lima_time
+from aje_libs.common.logger import custom_logger
 from typing import Optional, Dict, Any, List
 import json
 from datetime import timedelta
@@ -10,6 +11,7 @@ class DynamoDBWatermarkStorage(WatermarkStorageInterface):
     """Implementación DynamoDB para watermarks"""
     
     def __init__(self, table_name: str, project_name: str):
+        self.logger = custom_logger(__name__)
         self.table_name = table_name
         self.project_name = project_name
         self.dynamo_helper = DynamoDBHelper(
@@ -63,3 +65,40 @@ class DynamoDBWatermarkStorage(WatermarkStorageInterface):
         except Exception as e: 
             self.logger.error(f"Failed to save watermark to Dynamodb: {e}")
             return False
+
+    def get_extraction_history(self, table_name: str, limit: int = 10) -> List[Dict[str, Any]]:
+        """Obtiene el historial de extracciones"""
+        try:
+            watermark_key = f"{self.project_name}#{table_name}#*"
+            
+            # Query para obtener historial
+            response = self.dynamo_helper.scan_table(
+                filter_expression="begins_with(WATERMARK_KEY, :pk)",
+                expression_attribute_values={':pk': f"{self.project_name}#{table_name}#"},
+                limit=limit
+            )
+            
+            # Formatear respuesta
+            history = []
+            for item in response:
+                history.append({
+                    'table_name': item.get('TABLE_NAME'),
+                    'column_name': item.get('COLUMN_NAME'),
+                    'extracted_value': item.get('EXTRACTED_VALUE'),
+                    'timestamp': item.get('TIMESTAMP'),
+                    'metadata': json.loads(item.get('METADATA', '{}'))
+                })
+            
+            # Ordenar por timestamp
+            history.sort(key=lambda x: x['timestamp'], reverse=True)
+            return history[:limit]
+            
+        except Exception as e:
+            self.logger.warning(f"Failed to read extraction history from DynamoDB: {e}")
+            return []
+
+    def cleanup_old_watermarks(self, days_to_keep: int = 90) -> int:
+        """Limpia watermarks antiguos usando TTL"""
+        # En DynamoDB, esto se maneja automáticamente con TTL
+        # Solo retornamos 0 porque el cleanup es automático
+        return 0

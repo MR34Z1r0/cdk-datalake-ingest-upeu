@@ -1,6 +1,6 @@
 # interfaces/watermark_interface.py
 from abc import ABC, abstractmethod
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 from datetime import datetime
 
 class WatermarkStorageInterface(ABC):

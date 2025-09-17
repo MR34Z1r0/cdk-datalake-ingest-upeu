@@ -176,13 +176,12 @@ class IncrementalStrategy(ExtractionStrategy):
             if clean_filter:
                 filters.append(clean_filter)
         
-        # 🎯 USAR WATERMARK SOLO SI ESTÁ DISPONIBLE
+        # Usar watermark si está disponible
         if (self.watermark_storage and
             hasattr(self.table_config, 'partition_column') and 
             self.table_config.partition_column):
             
             try:
-                # Obtener último valor del watermark storage
                 last_value = self.watermark_storage.get_last_extracted_value(
                     table_name=self.table_config.stage_table_name,
                     column_name=self.table_config.partition_column
@@ -191,29 +190,141 @@ class IncrementalStrategy(ExtractionStrategy):
                 if last_value:
                     logger.info(f"Found watermark for {self.table_config.stage_table_name}.{self.table_config.partition_column}: {last_value}")
                     
-                    # Construir filtro con watermark
-                    watermark_filter = f"{self.table_config.partition_column} > {last_value}"
+                    # Detectar tipo y formatear apropiadamente
+                    data_type = self._detect_watermark_data_type(str(last_value))
+                    formatted_value = self._format_watermark_value_for_sql(last_value)
+                    
+                    # Construir filtro según el tipo de dato
+                    watermark_filter = self._build_typed_filter(
+                        self.table_config.partition_column, 
+                        formatted_value, 
+                        data_type
+                    )
+                    
                     filters.append(watermark_filter)
                     
-                    logger.info(f"Applied watermark filter: {watermark_filter}")
+                    logger.info(f"Applied {data_type} watermark filter: {watermark_filter}")
                 else:
                     logger.info(f"No watermark found for {self.table_config.stage_table_name}, will do full incremental")
                     
             except Exception as e:
                 logger.warning(f"Failed to get watermark, falling back to date-based incremental: {e}")
-                # Fallback a filtro basado en fechas
                 fallback_filter = self._build_date_based_incremental_filter()
                 if fallback_filter:
                     filters.append(fallback_filter)
-        
         else:
-            # Si no hay watermark storage, usar filtro basado en fechas
             logger.info("No watermark storage available, using date-based incremental")
             date_filter = self._build_date_based_incremental_filter()
             if date_filter:
                 filters.append(date_filter)
         
         return filters
+
+    def _build_typed_filter(self, column_name: str, formatted_value: str, data_type: str) -> str:
+        """Construye el filtro según el tipo de dato"""
+        
+        if data_type == 'datetime':
+            # Para datetime, asegurar que la columna también use DATETIME2
+            return f"CAST({column_name} AS DATETIME2(6)) > {formatted_value}"
+        
+        elif data_type in ['int', 'bigint']:
+            # Para números, comparación directa
+            return f"{column_name} > {formatted_value}"
+        
+        else:
+            # Para otros tipos, usar comparación de strings
+            return f"{column_name} > {formatted_value}"
+
+    def _format_watermark_value_for_sql(self, value: str) -> str:
+        """Formatea el valor del watermark según el tipo de dato detectado"""
+        try:
+            value_str = str(value).strip()
+            
+            # Detectar tipo de dato
+            data_type = self._detect_watermark_data_type(value_str)
+            
+            if data_type == 'datetime':
+                return self._format_datetime_watermark(value_str)
+            elif data_type == 'int':
+                return self._format_int_watermark(value_str)
+            elif data_type == 'bigint':
+                return self._format_bigint_watermark(value_str)
+            else:
+                # Fallback: tratar como string
+                return f"'{value_str}'"
+                
+        except Exception as e:
+            logger.warning(f"Error formatting watermark value: {e}")
+            return f"'{value}'"
+
+    def _detect_watermark_data_type(self, value: str) -> str:
+        """Detecta el tipo de dato del watermark"""
+        try:
+            # Es DATETIME si contiene caracteres típicos de fecha
+            if any(char in value for char in ['-', ':', ' ', '.']):
+                return 'datetime'
+            
+            # Es número - detectar si es INT o BIGINT
+            try:
+                num_value = int(value)
+                
+                # BIGINT: números muy grandes (típicamente timestamps o IDs grandes)
+                # INT: -2,147,483,648 a 2,147,483,647
+                # BIGINT: -9,223,372,036,854,775,808 a 9,223,372,036,854,775,807
+                
+                if abs(num_value) > 2147483647:  # Fuera del rango de INT
+                    return 'bigint'
+                else:
+                    return 'int'
+                    
+            except ValueError:
+                # No es número entero
+                return 'unknown'
+                
+        except Exception:
+            return 'unknown'
+
+    def _format_datetime_watermark(self, value: str) -> str:
+        """Formatea watermark tipo DATETIME con microsegundos"""
+        try:
+            from datetime import datetime
+            
+            # Parsear manteniendo microsegundos completos
+            for fmt in ['%Y-%m-%d %H:%M:%S.%f', '%Y-%m-%d %H:%M:%S', '%Y-%m-%d']:
+                try:
+                    dt = datetime.strptime(value, fmt)
+                    # Formatear con microsegundos completos y usar CAST para DATETIME2
+                    formatted_date = dt.strftime('%Y-%m-%d %H:%M:%S.%f')
+                    return f"CAST('{formatted_date}' AS DATETIME2(6))"
+                except ValueError:
+                    continue
+            
+            # Fallback si no se puede parsear
+            return f"CAST('{value}' AS DATETIME2(6))"
+            
+        except Exception as e:
+            logger.warning(f"Error formatting datetime watermark: {e}")
+            return f"CAST('{value}' AS DATETIME2(6))"
+
+    def _format_int_watermark(self, value: str) -> str:
+        """Formatea watermark tipo INT"""
+        try:
+            # Validar que es un entero válido
+            int_value = int(value)
+            return str(int_value)
+        except ValueError:
+            logger.warning(f"Invalid INT value for watermark: {value}")
+            return "0"
+
+    def _format_bigint_watermark(self, value: str) -> str:
+        """Formatea watermark tipo BIGINT"""
+        try:
+            # Validar que es un entero válido (puede ser muy grande)
+            bigint_value = int(value)
+            return str(bigint_value)
+        except ValueError:
+            logger.warning(f"Invalid BIGINT value for watermark: {value}")
+            return "0"
 
     def _build_incremental_id_filter(self) -> str:
         """Construye filtro incremental basado en ID"""

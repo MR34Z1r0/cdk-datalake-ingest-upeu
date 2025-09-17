@@ -171,13 +171,12 @@ class SQLServerExtractor(ExtractorInterface):
         self._password = self._secrets_helper.get_secret_value(self.config.secret_key)
     
     def _fix_duplicate_columns(self, df: pd.DataFrame) -> pd.DataFrame:
-        """Fix duplicate column names by appending numbers"""
+        """Fix duplicate column names and preserve datetime precision"""
         if df.empty:
             return df
         
+        # Fix column names
         columns = list(df.columns)
-        
-        # Check for duplicates
         if len(columns) != len(set(columns)):
             seen = {}
             new_columns = []
@@ -192,5 +191,11 @@ class SQLServerExtractor(ExtractorInterface):
                 new_columns.append(new_col)
             
             df.columns = new_columns
+        
+        # Preserve datetime precision - ensure datetime columns maintain microseconds
+        for col in df.columns:
+            if df[col].dtype == 'datetime64[ns]':
+                # Pandas ya preserva nanosegundos, no necesitamos cambiar nada
+                continue
         
         return df

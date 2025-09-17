@@ -362,9 +362,21 @@ class DataExtractionOrchestrator:
         """Execute the extraction strategy"""
         start_time = datetime.now()
         
-        # Clear existing data if needed
         destination_path = self._build_destination_path()
-        self.loader.delete_existing(destination_path)
+        
+        # ✅ CORRECCIÓN: Solo eliminar archivos existentes si NO es incremental
+        strategy_name = self.strategy.get_strategy_name().lower()
+        
+        if strategy_name in ['full', 'full_load']:
+            self.logger.info("Full load strategy - deleting existing files")
+            self.loader.delete_existing(destination_path)
+        elif strategy_name in ['incremental']:
+            self.logger.info("Incremental strategy - preserving existing files")
+            # No eliminar archivos existentes en cargas incrementales
+        else:
+            # Para otras estrategias (time_range, etc.), también eliminar
+            self.logger.info(f"{strategy_name} strategy - deleting existing files")
+            self.loader.delete_existing(destination_path)
         
         # Generate queries based on strategy
         queries = self.strategy.generate_queries()

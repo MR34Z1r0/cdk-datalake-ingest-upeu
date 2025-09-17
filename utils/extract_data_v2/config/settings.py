@@ -129,7 +129,7 @@ class Settings:
             'MONITOR_TYPE': os.getenv('MONITOR_TYPE', 'dynamodb'),
             'AWS_PROFILE': os.getenv('AWS_PROFILE', 'prd-upeu-admin'),
             'WATERMARK_STORAGE_TYPE': os.getenv('WATERMARK_STORAGE_TYPE', 'dynamodb'),
-            'WATERMARK_TABLE': os.getenv('WATERMARK_TABLE', 'sofia-dev-watermarks-ddb'),
+            'WATERMARK_TABLE': os.getenv('WATERMARK_TABLE', 'sofia-dev-datalake-watermarks-ddb'),
             'WATERMARK_CSV_PATH': os.getenv('WATERMARK_CSV_PATH', '../../artifacts/configuration/csv/watermarks.csv'),
             'WATERMARK_PG_CONNECTION': os.getenv('WATERMARK_PG_CONNECTION', ''),
             'WATERMARK_PG_SCHEMA': os.getenv('WATERMARK_PG_SCHEMA', 'watermarks')

@@ -1,6 +1,8 @@
-# -*- coding: utf-8 -*-
+# En utils/extract_data_v2/models/extraction_config.py
+
 from dataclasses import dataclass
 from typing import Optional
+from datetime import datetime
 
 @dataclass
 class ExtractionConfig:
@@ -28,8 +30,15 @@ class ExtractionConfig:
     # File format
     output_format: str = "parquet"  # 'parquet', 'csv', 'json'
     
+    # Timestamp de ejecución
+    execution_timestamp: Optional[str] = None
+    
     def __post_init__(self):
-        """Validate required fields"""
+        """Validate required fields and set defaults"""
         if not all([self.project_name, self.team, self.data_source, 
                    self.endpoint_name, self.environment, self.table_name]):
             raise ValueError("All extraction configuration fields are required")
+        
+        # Establecer timestamp si no se proporcionó
+        if self.execution_timestamp is None:
+            self.execution_timestamp = datetime.now().isoformat()

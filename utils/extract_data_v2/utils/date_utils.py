@@ -27,30 +27,6 @@ def transform_to_datetime(date_str: str) -> dt.datetime:
         second=int(date_str[17:19])
     )
 
-def get_date_limits(month_diff: str, data_type: str) -> Tuple[str, str]:
-    """Get lower and upper limits for date filters"""
-    month_diff = month_diff.strip().replace("'", "")
-    
-    upper_limit = get_current_lima_time()
-    lower_limit = upper_limit - relativedelta(months=(-1 * int(month_diff)))
-    
-    if data_type == "aje_period":
-        return lower_limit.strftime('%Y%m'), upper_limit.strftime('%Y%m')
-    
-    elif data_type in ["aje_date", "aje_processperiod"]:
-        # Get last day of month for upper limit
-        _, last_day = calendar.monthrange(upper_limit.year, upper_limit.month)
-        upper_limit = upper_limit.replace(day=last_day, tzinfo=TZ_LIMA)
-        lower_limit = lower_limit.replace(day=1, tzinfo=TZ_LIMA)
-        
-        # Convert to Excel date format
-        upper_limit_days = (upper_limit - dt.datetime(1900, 1, 1, tzinfo=TZ_LIMA)).days + 693596
-        lower_limit_days = (lower_limit - dt.datetime(1900, 1, 1, tzinfo=TZ_LIMA)).days + 693596
-        
-        return str(lower_limit_days), str(upper_limit_days)
-    
-    return lower_limit.strftime('%Y%m'), upper_limit.strftime('%Y%m')
-
 def format_date_for_db(date_str: str, date_type: str) -> str:
     """Format date string for specific database types"""
     if date_type == 'smalldatetime':
@@ -66,3 +42,55 @@ def format_date_for_db(date_str: str, date_type: str) -> str:
         return str(int(end_dt.timestamp()))
     else:
         return f"'{date_str}'"
+    
+    # utils/date_utils.py - nueva función
+
+def get_date_limits_with_range(
+    delay_ini: str, 
+    delay_end: str, 
+    data_type: str
+) -> Tuple[str, str]:
+    """
+    Get date limits using both start and end delays
+    
+    :param delay_ini: Months to subtract for start date (e.g., "-3")
+    :param delay_end: Months to subtract for end date (e.g., "0" or "-1")
+    :param data_type: Data type for formatting
+    :return: Tuple of (lower_limit, upper_limit)
+    """
+    delay_ini = delay_ini.strip().replace("'", "")
+    delay_end = delay_end.strip().replace("'", "") if delay_end else "0"
+    
+    current_time = get_current_lima_time()
+    
+    # Calcular fecha de inicio (delay_ini meses atrás)
+    start_date = current_time - relativedelta(months=(-1 * int(delay_ini)))
+    
+    # Calcular fecha de fin (delay_end meses atrás)
+    end_date = current_time - relativedelta(months=(-1 * int(delay_end)))
+    
+    if data_type == "aje_period":
+        return start_date.strftime('%Y%m'), end_date.strftime('%Y%m')
+    
+    elif data_type in ["aje_date", "aje_processperiod"]:
+        # Ajustar a primer día del mes para start y último día para end
+        start_date = start_date.replace(day=1, tzinfo=TZ_LIMA)
+        
+        _, last_day = calendar.monthrange(end_date.year, end_date.month)
+        end_date = end_date.replace(day=last_day, tzinfo=TZ_LIMA)
+        
+        # Convert to Excel date format
+        start_days = (start_date - dt.datetime(1900, 1, 1, tzinfo=TZ_LIMA)).days + 693596
+        end_days = (end_date - dt.datetime(1900, 1, 1, tzinfo=TZ_LIMA)).days + 693596
+        
+        return str(start_days), str(end_days)
+    
+    # Default: formato estándar
+    return start_date.strftime('%Y-%m-%d'), end_date.strftime('%Y-%m-%d')
+
+def get_date_limits(month_diff: str, data_type: str) -> Tuple[str, str]:
+    """
+    Get lower and upper limits for date filters (función original)
+    Ahora usa la nueva función internamente
+    """
+    return get_date_limits_with_range(month_diff, "0", data_type)

@@ -168,10 +168,6 @@ class DataExtractionOrchestrator:
         try:
             # Determine if using S3 or local files
             use_s3 = settings.is_aws_s3
-            print("???????????????????????????????????")
-            print(f"use_s3: {use_s3}")
-            print(f"TABLES_CSV_S3: {settings.get('TABLES_CSV_S3')}")
-            print("???????????????????????????????????")
             # Load CSV configurations
             if use_s3:
                 tables_data = CSVConfigLoader.load_from_s3(settings.get('TABLES_CSV_S3'))
@@ -182,16 +178,10 @@ class DataExtractionOrchestrator:
                 credentials_data = CSVConfigLoader.load_from_local(settings.get('CREDENTIALS_CSV_S3'))
                 columns_data = CSVConfigLoader.load_from_local(settings.get('COLUMNS_CSV_S3'))
             # Find table configuration
-            print("***********************************")
-            print(tables_data)
-            print("***********************************")
             table_row = CSVConfigLoader.find_config_by_criteria(
                 tables_data,
                 STAGE_TABLE_NAME=self.extraction_config.table_name
             )
-            print("====================================")
-            print(table_row)
-            print("====================================")
             
             # Find database configuration
             db_row = CSVConfigLoader.find_config_by_criteria(
@@ -207,6 +197,7 @@ class DataExtractionOrchestrator:
         except Exception as e:
             raise ConfigurationError(f"Failed to load configurations: {e}")
     
+    # core/orchestrator.py - en _build_table_config
     def _build_table_config(self, table_row: Dict[str, Any]) -> TableConfig:
         """Build TableConfig from CSV row"""
         from aje_libs.common.logger import custom_logger
@@ -248,6 +239,7 @@ class DataExtractionOrchestrator:
             filter_data_type=table_row.get('FILTER_DATA_TYPE'),
             join_expr=table_row.get('JOIN_EXPR'),
             delay_incremental_ini=table_row.get('DELAY_INCREMENTAL_INI'),
+            delay_incremental_end=table_row.get('DELAY_INCREMENTAL_END'),  # 👈 NUEVO
             start_value=table_row.get('START_VALUE'),
             end_value=table_row.get('END_VALUE')
         )

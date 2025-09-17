@@ -41,8 +41,14 @@ def register_default_strategies():
     """Registra las estrategias por defecto"""
     try:
         from ..implementations.full_load import FullLoadStrategy
+        from ..implementations.incremental import IncrementalStrategy
+        from ..implementations.time_range import TimeRangeStrategy
+        
         StrategyRegistry.register(ExtractionStrategyType.FULL_LOAD, FullLoadStrategy)
-        logger.info("Default strategies registered successfully")
+        StrategyRegistry.register(ExtractionStrategyType.INCREMENTAL, IncrementalStrategy)
+        StrategyRegistry.register(ExtractionStrategyType.TIME_RANGE, TimeRangeStrategy)
+        
+        logger.info("All default strategies registered successfully")
     except ImportError as e:
         logger.warning(f"Could not register some default strategies: {e}")
 

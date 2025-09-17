@@ -18,6 +18,7 @@ class TableConfig:
     filter_data_type: Optional[str] = None
     join_expr: Optional[str] = None
     delay_incremental_ini: Optional[str] = None
+    delay_incremental_end: Optional[str] = None  # 👈 NUEVO CAMPO
     start_value: Optional[str] = None
     end_value: Optional[str] = None
     

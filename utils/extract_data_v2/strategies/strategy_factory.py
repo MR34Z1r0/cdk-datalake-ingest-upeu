@@ -55,8 +55,8 @@ class StrategyFactory:
     
     @classmethod
     def _determine_strategy_type(cls, table_config: TableConfig, 
-                               extraction_config: ExtractionConfig) -> ExtractionStrategyType:
-        """Determina qué estrategia usar basada en configuración (lógica simplificada)"""
+                            extraction_config: ExtractionConfig) -> ExtractionStrategyType:
+        """Determina qué estrategia usar basada en configuración"""
         
         # Force full load override
         if extraction_config.force_full_load:
@@ -67,6 +67,38 @@ class StrategyFactory:
         load_type = table_config.load_type.lower().strip() if table_config.load_type else 'full'
         logger.info(f"Load type from config: '{load_type}'")
         
+        # Lógica específica para determinar estrategia
+        if load_type in ['incremental']:
+            # Verificar si tiene los campos necesarios para incremental
+            has_incremental_config = (
+                (hasattr(table_config, 'filter_column') and table_config.filter_column) or
+                (hasattr(table_config, 'partition_column') and table_config.partition_column)
+            )
+            
+            if has_incremental_config:
+                logger.info("Detected incremental configuration - using INCREMENTAL strategy")
+                return ExtractionStrategyType.INCREMENTAL
+            else:
+                logger.warning("Incremental load_type but missing config - falling back to FULL_LOAD")
+                return ExtractionStrategyType.FULL_LOAD
+        
+        elif load_type in ['date_range', 'between-date', 'time_range']:
+            # Verificar si tiene configuración para time range
+            has_time_range_config = (
+                hasattr(table_config, 'filter_column') and table_config.filter_column and
+                ((hasattr(table_config, 'start_value') and table_config.start_value and
+                hasattr(table_config, 'end_value') and table_config.end_value) or
+                (hasattr(table_config, 'delay_incremental_ini') and table_config.delay_incremental_ini))
+            )
+            
+            if has_time_range_config:
+                logger.info(f"Detected time range configuration for '{load_type}' - using TIME_RANGE strategy")
+                return ExtractionStrategyType.TIME_RANGE
+            else:
+                logger.warning(f"Time range load_type '{load_type}' but missing config - falling back to FULL_LOAD")
+                return ExtractionStrategyType.FULL_LOAD
+        
+        # Default a full load
         try:
             strategy_type = ExtractionStrategyType.from_string(load_type)
             logger.info(f"Mapped to strategy type: {strategy_type.value}")

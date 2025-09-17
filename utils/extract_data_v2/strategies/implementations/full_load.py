@@ -18,6 +18,10 @@ class FullLoadStrategy(ExtractionStrategy):
         logger.info(f"=== FULL LOAD STRATEGY - Building Params ===")
         logger.info(f"Table: {self.extraction_config.table_name}")
         
+        # 🎯 FULL LOAD NO USA WATERMARKS
+        if self.watermark_storage:
+            logger.info("⚠️  Watermark storage provided but not used in full load strategy")
+        
         # Crear parámetros básicos
         params = ExtractionParams(
             table_name=self._get_source_table_name(),
@@ -25,7 +29,7 @@ class FullLoadStrategy(ExtractionStrategy):
             metadata=self._build_basic_metadata()
         )
         
-        # Agregar filtros básicos si existen
+        # Agregar filtros básicos si existen (SIN watermarks)
         basic_filters = self._build_basic_filters()
         for filter_condition in basic_filters:
             params.add_where_condition(filter_condition)
@@ -36,7 +40,7 @@ class FullLoadStrategy(ExtractionStrategy):
             params.chunk_column = self._get_chunking_column()
             logger.info(f"Chunking enabled - Size: {params.chunk_size}, Column: {params.chunk_column}")
         
-        logger.info(f"Extraction params built - Columns: {len(params.columns)}, Where conditions: {len(params.where_conditions)}")
+        logger.info(f"Full load extraction params built - Columns: {len(params.columns)}, Where conditions: {len(params.where_conditions)}")
         logger.info("=== END FULL LOAD STRATEGY ===")
         
         return params

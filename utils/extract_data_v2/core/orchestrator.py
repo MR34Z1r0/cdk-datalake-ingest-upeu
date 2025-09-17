@@ -127,13 +127,21 @@ class DataExtractionOrchestrator:
         if not self.extractor.test_connection():
             raise ConnectionError("Failed to connect to database")
         
-        # Create watermark storage
+        # 🎯 SOLO CREAR WATERMARK STORAGE SI ES NECESARIO
         watermark_config = self._build_watermark_storage_config()
-        self.watermark_storage = WatermarkStorageFactory.create(
-            storage_type=settings.get('WATERMARK_STORAGE_TYPE', 'dynamodb'),
-            **watermark_config
-        )
-        self.logger.info(f"Watermark storage initialized: {type(self.watermark_storage).__name__}")
+        
+        # Determinar si la estrategia necesita watermarks
+        strategy_needs_watermark = self._strategy_needs_watermark_storage()
+        
+        if strategy_needs_watermark:
+            self.watermark_storage = WatermarkStorageFactory.create(
+                storage_type=settings.get('WATERMARK_STORAGE_TYPE', 'dynamodb'),
+                **watermark_config
+            )
+            self.logger.info(f"Watermark storage initialized: {type(self.watermark_storage).__name__}")
+        else:
+            self.watermark_storage = None
+            self.logger.info("Watermark storage not needed for this strategy")
 
         # Create loader
         loader_config = self._build_loader_config()
@@ -154,30 +162,32 @@ class DataExtractionOrchestrator:
             table_config=self.table_config,
             extraction_config=self.extraction_config,
             watermark_storage=self.watermark_storage  # 👈 AQUÍ SE PASA
-        )
-
-        # Create strategy - Try new factory first, fallback to old
-        try: 
-            
-            self.logger.info("Attempting to use StrategyFactory")
-            self.strategy = StrategyFactory.create(
-                table_config=self.table_config,
-                extraction_config=self.extraction_config
-            )
-            self.logger.info("Successfully created strategy using StrategyFactory")
-            
-        except Exception as e:
-            
-            self.logger.warning(f"StrategyFactory failed: {e}")
-            self.logger.info("Falling back to original StrategyFactory")
-            
-            # Fallback to original factory
-            self.strategy = StrategyFactory.create(
-                table_config=self.table_config,
-                extraction_config=self.extraction_config,
-                extractor=self.extractor
-            )
+        ) 
     
+    def _strategy_needs_watermark_storage(self) -> bool:
+        """Determina si la estrategia necesita watermark storage"""
+        
+        # Si force_full_load está activo, no usar watermarks
+        if self.extraction_config.force_full_load:
+            return False
+        
+        # Solo las estrategias incrementales necesitan watermarks
+        load_type = self.table_config.load_type.lower().strip() if self.table_config.load_type else 'full'
+        
+        incremental_types = ['incremental']
+        
+        if load_type in incremental_types:
+            # Verificar que tenga los campos necesarios para incremental con watermarks
+            has_partition_column = (
+                hasattr(self.table_config, 'partition_column') and 
+                self.table_config.partition_column and 
+                self.table_config.partition_column.strip()
+            )
+            
+            return has_partition_column
+        
+        return False
+
     def _load_configurations(self):
         """Load table and database configurations from CSV files"""
         try:
@@ -424,11 +434,10 @@ class DataExtractionOrchestrator:
         max_extracted_value = None
         
         try:
-            # Extract data (esto devuelve un Iterator[pd.DataFrame])
+            # Extract data
             chunk_size = metadata.get('chunk_size', self.extraction_config.chunk_size)
             data_iterator = self.extractor.extract_data(query, chunk_size)
             
-            # Procesar cada chunk del generador
             destination_path = metadata.get('destination_path', self._build_destination_path())
             
             chunk_count = 0
@@ -443,16 +452,22 @@ class DataExtractionOrchestrator:
                     files_created.append(file_path)
                     total_records += len(chunk_df)
 
-                    if self.table_config.partition_column and self.table_config.partition_column in chunk_df.columns:
+                    # 🎯 SOLO ACTUALIZAR WATERMARK SI ES ESTRATEGIA INCREMENTAL
+                    if (self.table_config.partition_column and 
+                        self.table_config.partition_column in chunk_df.columns and
+                        self.strategy.get_strategy_name() == 'incremental'):  # 👈 VERIFICAR ESTRATEGIA
+                        
                         chunk_max = chunk_df[self.table_config.partition_column].max()
                         if max_extracted_value is None or chunk_max > max_extracted_value:
                             max_extracted_value = chunk_max
 
                     chunk_count += 1
             
+            # 🎯 SOLO GUARDAR WATERMARK SI ES INCREMENTAL Y HAY WATERMARK STORAGE
             if (max_extracted_value is not None and 
                 self.watermark_storage and 
-                self.table_config.partition_column):
+                self.table_config.partition_column and
+                self.strategy.get_strategy_name() == 'incremental'):
                 
                 success = self.watermark_storage.set_last_extracted_value(
                     table_name=self.table_config.stage_table_name,
@@ -462,7 +477,8 @@ class DataExtractionOrchestrator:
                         'extraction_timestamp': datetime.now().isoformat(),
                         'records_extracted': total_records,
                         'files_created': len(files_created),
-                        'thread_id': thread_id
+                        'thread_id': thread_id,
+                        'strategy': self.strategy.get_strategy_name()
                     }
                 )
                 
@@ -470,7 +486,10 @@ class DataExtractionOrchestrator:
                     self.logger.info(f"Updated watermark: {self.table_config.stage_table_name}.{self.table_config.partition_column} = {max_extracted_value}")
                 else:
                     self.logger.warning(f"Failed to update watermark for {self.table_config.stage_table_name}")
-        
+            
+            elif max_extracted_value is not None:
+                self.logger.info(f"Max value extracted: {max_extracted_value} (not saved as watermark - strategy: {self.strategy.get_strategy_name()})")
+            
             # Si hay múltiples archivos, retornar el primero como representativo
             return files_created[0] if files_created else None, total_records
             

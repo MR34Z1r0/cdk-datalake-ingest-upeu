@@ -18,6 +18,12 @@ class IncrementalStrategy(ExtractionStrategy):
         logger.info(f"=== INCREMENTAL STRATEGY - Building Params ===")
         logger.info(f"Table: {self.extraction_config.table_name}")
         
+        # 🎯 VERIFICAR SI HAY WATERMARK STORAGE DISPONIBLE
+        if self.watermark_storage:
+            logger.info("✅ Watermark storage available for incremental strategy")
+        else:
+            logger.warning("⚠️  No watermark storage provided - will do date-based incremental only")
+        
         # Crear parámetros básicos
         params = ExtractionParams(
             table_name=self._get_source_table_name(),
@@ -25,7 +31,7 @@ class IncrementalStrategy(ExtractionStrategy):
             metadata=self._build_basic_metadata()
         )
         
-        # Agregar filtros incrementales
+        # Agregar filtros incrementales (CON o SIN watermarks según disponibilidad)
         incremental_filters = self._build_incremental_filters_with_watermark()
         for filter_condition in incremental_filters:
             params.add_where_condition(filter_condition)
@@ -117,43 +123,20 @@ class IncrementalStrategy(ExtractionStrategy):
         
         return errors
     
-    def _build_incremental_filters(self) -> List[str]:
-        """Construye filtros específicos para carga incremental"""
-        filters = []
-        
-        # Filtro básico de la configuración
-        if hasattr(self.table_config, 'filter_exp') and self.table_config.filter_exp:
-            clean_filter = self.table_config.filter_exp.replace('"', '').strip()
-            if clean_filter:
-                filters.append(clean_filter)
-        
-        # Filtro incremental basado en fechas
+    def _build_date_based_incremental_filter(self) -> str:
+        """Construye filtro incremental basado en fechas como fallback"""
         if (hasattr(self.table_config, 'filter_column') and 
             self.table_config.filter_column and 
             hasattr(self.table_config, 'delay_incremental_ini') and
             self.table_config.delay_incremental_ini):
             
             try:
-                date_filter = self._build_incremental_date_filter()
-                if date_filter:
-                    filters.append(date_filter)
+                return self._build_incremental_date_filter()
             except Exception as e:
-                logger.warning(f"Could not build incremental date filter: {e}")
+                logger.warning(f"Failed to build date-based incremental filter: {e}")
+                return None
         
-        # Filtro incremental basado en ID/sequence
-        if (hasattr(self.table_config, 'partition_column') and 
-            self.table_config.partition_column and
-            hasattr(self.table_config, 'start_value') and
-            self.table_config.start_value):
-            
-            try:
-                id_filter = self._build_incremental_id_filter()
-                if id_filter:
-                    filters.append(id_filter)
-            except Exception as e:
-                logger.warning(f"Could not build incremental ID filter: {e}")
-        
-        return filters
+        return None
     
     def _build_incremental_date_filter(self) -> str:
         """Construye filtro incremental basado en fechas"""
@@ -184,7 +167,7 @@ class IncrementalStrategy(ExtractionStrategy):
             return None
     
     def _build_incremental_filters_with_watermark(self) -> List[str]:
-        """Construye filtros incrementales usando watermark storage"""
+        """Construye filtros incrementales usando watermark storage si está disponible"""
         filters = []
         
         # Filtro básico
@@ -193,10 +176,10 @@ class IncrementalStrategy(ExtractionStrategy):
             if clean_filter:
                 filters.append(clean_filter)
         
-        # 🎯 USAR WATERMARK PARA INCREMENTAL
-        if (hasattr(self.table_config, 'partition_column') and 
-            self.table_config.partition_column and
-            self.watermark_storage):  # 👈 VERIFICAR QUE EXISTE
+        # 🎯 USAR WATERMARK SOLO SI ESTÁ DISPONIBLE
+        if (self.watermark_storage and
+            hasattr(self.table_config, 'partition_column') and 
+            self.table_config.partition_column):
             
             try:
                 # Obtener último valor del watermark storage
@@ -217,7 +200,18 @@ class IncrementalStrategy(ExtractionStrategy):
                     logger.info(f"No watermark found for {self.table_config.stage_table_name}, will do full incremental")
                     
             except Exception as e:
-                logger.warning(f"Failed to get watermark, continuing without: {e}")
+                logger.warning(f"Failed to get watermark, falling back to date-based incremental: {e}")
+                # Fallback a filtro basado en fechas
+                fallback_filter = self._build_date_based_incremental_filter()
+                if fallback_filter:
+                    filters.append(fallback_filter)
+        
+        else:
+            # Si no hay watermark storage, usar filtro basado en fechas
+            logger.info("No watermark storage available, using date-based incremental")
+            date_filter = self._build_date_based_incremental_filter()
+            if date_filter:
+                filters.append(date_filter)
         
         return filters
 

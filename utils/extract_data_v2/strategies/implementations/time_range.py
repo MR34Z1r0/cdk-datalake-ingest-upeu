@@ -18,6 +18,10 @@ class TimeRangeStrategy(ExtractionStrategy):
         logger.info(f"=== TIME RANGE STRATEGY - Building Params ===")
         logger.info(f"Table: {self.extraction_config.table_name}")
         
+        # 🎯 TIME RANGE NO USA WATERMARKS - usa rangos específicos
+        if self.watermark_storage:
+            logger.info("⚠️  Watermark storage provided but not used in time range strategy")
+        
         # Crear parámetros básicos
         params = ExtractionParams(
             table_name=self._get_source_table_name(),
@@ -25,7 +29,7 @@ class TimeRangeStrategy(ExtractionStrategy):
             metadata=self._build_basic_metadata()
         )
         
-        # Agregar filtros de rango de tiempo
+        # Agregar filtros de rango de tiempo (SIN watermarks)
         time_range_filters = self._build_time_range_filters()
         for filter_condition in time_range_filters:
             params.add_where_condition(filter_condition)

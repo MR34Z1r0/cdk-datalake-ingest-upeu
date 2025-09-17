@@ -13,18 +13,23 @@ from interfaces.extractor_interface import ExtractorInterface
 from interfaces.loader_interface import LoaderInterface
 from interfaces.monitor_interface import MonitorInterface
 from interfaces.strategy_interface import StrategyInterface
+from interfaces.watermark_interface import WatermarkStorageInterface
 from extract.extractor_factory import ExtractorFactory
 from load.loader_factory import LoaderFactory
+from load.watermark_factory import WatermarkStorageFactory
 from monitoring.monitor_factory import MonitorFactory
 from strategies.strategy_factory import StrategyFactory
 from utils.csv_loader import CSVConfigLoader
 from exceptions.custom_exceptions import *
 from config.settings import settings
+from aje_libs.common.logger import custom_logger
+            
 
 class DataExtractionOrchestrator:
     """Main orchestrator for the data extraction process"""
     
     def __init__(self, extraction_config: ExtractionConfig):
+        self.logger = custom_logger(__name__)
         self.extraction_config = extraction_config
         self.table_config: Optional[TableConfig] = None
         self.database_config: Optional[DatabaseConfig] = None
@@ -34,6 +39,7 @@ class DataExtractionOrchestrator:
         self.loader: Optional[LoaderInterface] = None
         self.monitor: Optional[MonitorInterface] = None
         self.strategy: Optional[StrategyInterface] = None
+        self.watermark_storage: Optional[WatermarkStorageInterface] = None
         
         # Results tracking
         self.extraction_result: Optional[ExtractionResult] = None
@@ -121,6 +127,14 @@ class DataExtractionOrchestrator:
         if not self.extractor.test_connection():
             raise ConnectionError("Failed to connect to database")
         
+        # Create watermark storage
+        watermark_config = self._build_watermark_storage_config()
+        self.watermark_storage = WatermarkStorageFactory.create(
+            storage_type=settings.get('WATERMARK_STORAGE_TYPE', 'dynamodb'),
+            **watermark_config
+        )
+        self.logger.info(f"Watermark storage initialized: {type(self.watermark_storage).__name__}")
+
         # Create loader
         loader_config = self._build_loader_config()
         self.loader = LoaderFactory.create(
@@ -136,25 +150,26 @@ class DataExtractionOrchestrator:
             **monitor_config
         )
         
+        self.strategy = StrategyFactory.create(
+            table_config=self.table_config,
+            extraction_config=self.extraction_config,
+            watermark_storage=self.watermark_storage  # 👈 AQUÍ SE PASA
+        )
+
         # Create strategy - Try new factory first, fallback to old
-        try:
-            from strategies.strategy_factory import StrategyFactory
-            from aje_libs.common.logger import custom_logger
-            logger = custom_logger(__name__)
+        try: 
             
-            logger.info("Attempting to use StrategyFactoryV2")
+            self.logger.info("Attempting to use StrategyFactory")
             self.strategy = StrategyFactory.create(
                 table_config=self.table_config,
                 extraction_config=self.extraction_config
             )
-            logger.info("Successfully created strategy using StrategyFactoryV2")
+            self.logger.info("Successfully created strategy using StrategyFactory")
             
         except Exception as e:
-            from aje_libs.common.logger import custom_logger
-            logger = custom_logger(__name__)
             
-            logger.warning(f"StrategyFactoryV2 failed: {e}")
-            logger.info("Falling back to original StrategyFactory")
+            self.logger.warning(f"StrategyFactory failed: {e}")
+            self.logger.info("Falling back to original StrategyFactory")
             
             # Fallback to original factory
             self.strategy = StrategyFactory.create(
@@ -197,33 +212,30 @@ class DataExtractionOrchestrator:
         except Exception as e:
             raise ConfigurationError(f"Failed to load configurations: {e}")
     
-    # core/orchestrator.py - en _build_table_config
     def _build_table_config(self, table_row: Dict[str, Any]) -> TableConfig:
-        """Build TableConfig from CSV row"""
-        from aje_libs.common.logger import custom_logger
-        logger = custom_logger(__name__)
+        """Build TableConfig from CSV row""" 
         
-        logger.info("=== BUILDING TABLE CONFIG ===")
-        logger.info(f"Raw CSV row LOAD_TYPE: '{table_row.get('LOAD_TYPE', '')}'")
+        self.logger.info("=== BUILDING TABLE CONFIG ===")
+        self.logger.info(f"Raw CSV row LOAD_TYPE: '{table_row.get('LOAD_TYPE', '')}'")
         
         # Apply load type logic - default to 'full' if not explicitly set
         load_type = table_row.get('LOAD_TYPE', '').strip()
-        logger.info(f"After strip - load_type: '{load_type}'")
+        self.logger.info(f"After strip - load_type: '{load_type}'")
         
         if not load_type:
             load_type = 'full'
-            logger.info(f"Empty load_type, setting to 'full': '{load_type}'")
+            self.logger.info(f"Empty load_type, setting to 'full': '{load_type}'")
         
-        logger.info(f"Before force_full_load check - load_type: '{load_type}'")
-        logger.info(f"force_full_load setting: {self.extraction_config.force_full_load}")
+        self.logger.info(f"Before force_full_load check - load_type: '{load_type}'")
+        self.logger.info(f"force_full_load setting: {self.extraction_config.force_full_load}")
         
         # Apply force full load override
         if self.extraction_config.force_full_load and load_type == 'incremental':
             load_type = 'full'
-            logger.info(f"Applied force_full_load override: '{load_type}'")
+            self.logger.info(f"Applied force_full_load override: '{load_type}'")
         
-        logger.info(f"Final load_type: '{load_type}'")
-        logger.info("=== END BUILDING TABLE CONFIG ===")
+        self.logger.info(f"Final load_type: '{load_type}'")
+        self.logger.info("=== END BUILDING TABLE CONFIG ===")
         
         return TableConfig(
             stage_table_name=table_row.get('STAGE_TABLE_NAME', ''),
@@ -260,6 +272,23 @@ class DataExtractionOrchestrator:
             port=int(db_row.get('DB_PORT_NUMBER')) if db_row.get('DB_PORT_NUMBER') else None,
             secret_name=secret_name
         )
+    
+    def _build_watermark_storage_config(self) -> Dict[str, Any]:
+        """Build watermark storage configuration"""
+        storage_type = settings.get('WATERMARK_STORAGE_TYPE', 'dynamodb')
+        
+        if storage_type == 'dynamodb':
+            return {
+                'table_name': settings.get('WATERMARK_TABLE', 'extraction-watermarks'),
+                'project_name': self.extraction_config.project_name
+            }
+        elif storage_type == 'csv':
+            return {
+                'csv_file_path': settings.get('WATERMARK_CSV_PATH', './data/watermarks.csv'),
+                'project_name': self.extraction_config.project_name
+            }
+        
+        return {}
     
     def _process_columns_field(self, columns_str: str) -> str:
         """Process columns field to handle SQL Server identifier issues"""
@@ -302,26 +331,22 @@ class DataExtractionOrchestrator:
     
     def _validate_configuration(self):
         """Validate all configurations"""
-        from aje_libs.common.logger import custom_logger
-        logger = custom_logger(__name__)
         
-        logger.info("=== STARTING CONFIGURATION VALIDATION ===")
+        self.logger.info("=== STARTING CONFIGURATION VALIDATION ===")
         
         try:
-            logger.info("Validating strategy configuration...")
+            self.logger.info("Validating strategy configuration...")
             if not self.strategy.validate_config():
-                logger.error("❌ Strategy validation failed")
+                self.logger.error("❌ Strategy validation failed")
                 raise ConfigurationError("Invalid strategy configuration")
             else:
-                logger.info("✅ Strategy validation passed")
+                self.logger.info("✅ Strategy validation passed")
         except Exception as e:
-            logger.error(f"Error during strategy validation: {str(e)}")
-            logger.error(f"Exception type: {type(e).__name__}")
-            import traceback
-            logger.error(f"Full traceback: {traceback.format_exc()}")
+            self.logger.error(f"Error during strategy validation: {str(e)}")
+            self.logger.error(f"Exception type: {type(e).__name__}") 
             raise
         
-        logger.info("=== CONFIGURATION VALIDATION COMPLETED ===")
+        self.logger.info("=== CONFIGURATION VALIDATION COMPLETED ===")
     
     def _execute_extraction_strategy(self) -> ExtractionResult:
         """Execute the extraction strategy"""
@@ -396,6 +421,7 @@ class DataExtractionOrchestrator:
         
         files_created = []
         total_records = 0
+        max_extracted_value = None
         
         try:
             # Extract data (esto devuelve un Iterator[pd.DataFrame])
@@ -416,12 +442,35 @@ class DataExtractionOrchestrator:
                     )
                     files_created.append(file_path)
                     total_records += len(chunk_df)
+
+                    if self.table_config.partition_column and self.table_config.partition_column in chunk_df.columns:
+                        chunk_max = chunk_df[self.table_config.partition_column].max()
+                        if max_extracted_value is None or chunk_max > max_extracted_value:
+                            max_extracted_value = chunk_max
+
                     chunk_count += 1
             
-            # Si no se procesaron chunks, retornar valores por defecto
-            if chunk_count == 0:
-                return None, 0
-            
+            if (max_extracted_value is not None and 
+                self.watermark_storage and 
+                self.table_config.partition_column):
+                
+                success = self.watermark_storage.set_last_extracted_value(
+                    table_name=self.table_config.stage_table_name,
+                    column_name=self.table_config.partition_column,
+                    value=str(max_extracted_value),
+                    metadata={
+                        'extraction_timestamp': datetime.now().isoformat(),
+                        'records_extracted': total_records,
+                        'files_created': len(files_created),
+                        'thread_id': thread_id
+                    }
+                )
+                
+                if success:
+                    self.logger.info(f"Updated watermark: {self.table_config.stage_table_name}.{self.table_config.partition_column} = {max_extracted_value}")
+                else:
+                    self.logger.warning(f"Failed to update watermark for {self.table_config.stage_table_name}")
+        
             # Si hay múltiples archivos, retornar el primero como representativo
             return files_created[0] if files_created else None, total_records
             

@@ -13,6 +13,7 @@ class StrategyAdapter(StrategyInterface):
     def __init__(self, new_strategy: ExtractionStrategy):
         self.new_strategy = new_strategy
         self.extraction_params = None
+        self.watermark_storage = new_strategy.watermark_storage
     
     def generate_queries(self) -> List[Dict[str, Any]]:
         """Adapta el nuevo método build_extraction_params al formato esperado"""

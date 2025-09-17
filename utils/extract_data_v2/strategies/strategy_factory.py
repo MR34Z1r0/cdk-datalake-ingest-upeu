@@ -4,6 +4,7 @@ from .base.extraction_strategy import ExtractionStrategy
 from .base.strategy_types import ExtractionStrategyType
 from .registry.strategy_registry import StrategyRegistry
 from interfaces.strategy_interface import StrategyInterface
+from interfaces.watermark_interface import WatermarkStorageInterface
 from models.table_config import TableConfig
 from models.extraction_config import ExtractionConfig
 from exceptions.custom_exceptions import ConfigurationError
@@ -15,10 +16,11 @@ class StrategyFactory:
     """Factory simplificado para crear estrategias de extracción"""
     
     @classmethod
-    def create(cls, table_config: TableConfig, extraction_config: ExtractionConfig) -> StrategyInterface:
+    def create(cls, table_config: TableConfig, extraction_config: ExtractionConfig,
+               watermark_storage: WatermarkStorageInterface = None) -> StrategyInterface:
         """Crea la estrategia apropiada basada en configuración"""
         
-        logger.info(f"=== STRATEGY FACTORY V2 ===")
+        logger.info(f"=== STRATEGY FACTORY ===")
         logger.info(f"Table: {extraction_config.table_name}")
         
         # Determinar tipo de estrategia
@@ -34,9 +36,10 @@ class StrategyFactory:
         
         # Crear instancia de la nueva estrategia
         strategy_class = StrategyRegistry.get_strategy_class(strategy_type)
+        
         logger.info(f"Creating strategy instance: {strategy_class.__name__}")
         
-        new_strategy = strategy_class(table_config, extraction_config)
+        new_strategy = strategy_class(table_config, extraction_config, watermark_storage)
         
         # Validar configuración
         if not new_strategy.validate_and_cache():
@@ -49,7 +52,7 @@ class StrategyFactory:
         strategy_adapter = StrategyAdapter(new_strategy)
         
         logger.info(f"Strategy instance created and wrapped in adapter successfully")
-        logger.info("=== END STRATEGY FACTORY V2 ===")
+        logger.info("=== END STRATEGY FACTORY ===")
         
         return strategy_adapter
     

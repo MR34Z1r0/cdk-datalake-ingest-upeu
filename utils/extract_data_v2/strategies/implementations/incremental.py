@@ -26,7 +26,7 @@ class IncrementalStrategy(ExtractionStrategy):
         )
         
         # Agregar filtros incrementales
-        incremental_filters = self._build_incremental_filters()
+        incremental_filters = self._build_incremental_filters_with_watermark()
         for filter_condition in incremental_filters:
             params.add_where_condition(filter_condition)
         
@@ -183,6 +183,44 @@ class IncrementalStrategy(ExtractionStrategy):
             logger.warning(f"Failed to build incremental date filter: {e}")
             return None
     
+    def _build_incremental_filters_with_watermark(self) -> List[str]:
+        """Construye filtros incrementales usando watermark storage"""
+        filters = []
+        
+        # Filtro básico
+        if hasattr(self.table_config, 'filter_exp') and self.table_config.filter_exp:
+            clean_filter = self.table_config.filter_exp.replace('"', '').strip()
+            if clean_filter:
+                filters.append(clean_filter)
+        
+        # 🎯 USAR WATERMARK PARA INCREMENTAL
+        if (hasattr(self.table_config, 'partition_column') and 
+            self.table_config.partition_column and
+            self.watermark_storage):  # 👈 VERIFICAR QUE EXISTE
+            
+            try:
+                # Obtener último valor del watermark storage
+                last_value = self.watermark_storage.get_last_extracted_value(
+                    table_name=self.table_config.stage_table_name,
+                    column_name=self.table_config.partition_column
+                )
+                
+                if last_value:
+                    logger.info(f"Found watermark for {self.table_config.stage_table_name}.{self.table_config.partition_column}: {last_value}")
+                    
+                    # Construir filtro con watermark
+                    watermark_filter = f"{self.table_config.partition_column} > {last_value}"
+                    filters.append(watermark_filter)
+                    
+                    logger.info(f"Applied watermark filter: {watermark_filter}")
+                else:
+                    logger.info(f"No watermark found for {self.table_config.stage_table_name}, will do full incremental")
+                    
+            except Exception as e:
+                logger.warning(f"Failed to get watermark, continuing without: {e}")
+        
+        return filters
+
     def _build_incremental_id_filter(self) -> str:
         """Construye filtro incremental basado en ID"""
         try:

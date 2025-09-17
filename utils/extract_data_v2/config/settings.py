@@ -127,7 +127,12 @@ class Settings:
             'EXTRACTOR_TYPE': os.getenv('EXTRACTOR_TYPE', 'sqlserver'),
             'LOADER_TYPE': os.getenv('LOADER_TYPE', 's3'),
             'MONITOR_TYPE': os.getenv('MONITOR_TYPE', 'dynamodb'),
-            'AWS_PROFILE': os.getenv('AWS_PROFILE', 'prd-upeu-admin')
+            'AWS_PROFILE': os.getenv('AWS_PROFILE', 'prd-upeu-admin'),
+            'WATERMARK_STORAGE_TYPE': os.getenv('WATERMARK_STORAGE_TYPE', 'dynamodb'),
+            'WATERMARK_TABLE': os.getenv('WATERMARK_TABLE', 'sofia-dev-watermarks-ddb'),
+            'WATERMARK_CSV_PATH': os.getenv('WATERMARK_CSV_PATH', '../../artifacts/configuration/csv/watermarks.csv'),
+            'WATERMARK_PG_CONNECTION': os.getenv('WATERMARK_PG_CONNECTION', ''),
+            'WATERMARK_PG_SCHEMA': os.getenv('WATERMARK_PG_SCHEMA', 'watermarks')
         }
     
     def get(self, key: str, default: Any = None) -> Any:

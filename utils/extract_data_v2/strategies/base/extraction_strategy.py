@@ -5,13 +5,15 @@ from .extraction_params import ExtractionParams
 from .strategy_types import ExtractionStrategyType
 from models.table_config import TableConfig
 from models.extraction_config import ExtractionConfig
+from interfaces.watermark_interface import WatermarkStorageInterface
 
 class ExtractionStrategy(ABC):
     """Estrategia base simplificada para extracción de datos"""
     
-    def __init__(self, table_config: TableConfig, extraction_config: ExtractionConfig):
+    def __init__(self, table_config: TableConfig, extraction_config: ExtractionConfig, watermark_storage: WatermarkStorageInterface = None):
         self.table_config = table_config
         self.extraction_config = extraction_config
+        self.watermark_storage = watermark_storage
         self._validated = False
     
     @abstractmethod

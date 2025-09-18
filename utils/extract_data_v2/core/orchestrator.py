@@ -445,9 +445,16 @@ class DataExtractionOrchestrator:
         total_records = 0
         max_extracted_value = None
         
-        try:
+        try:            
+            # Debug: imprimir información inicial
+            self.logger.info(f"🔍 DEBUG Strategy name: '{self.strategy.get_strategy_name()}'")
+            self.logger.info(f"🔍 DEBUG Partition column: '{self.table_config.partition_column}'")
+            self.logger.info(f"🔍 DEBUG Watermark storage available: {self.watermark_storage is not None}")
+
             # Extract data
             chunk_size = metadata.get('chunk_size', self.extraction_config.chunk_size)
+            self.logger.info(f"🔍 DEBUG Chunk size: {chunk_size}")
+            self.logger.info(f"🔍 DEBUG query: {query}")
             data_iterator = self.extractor.extract_data(query, chunk_size)
             
             destination_path = metadata.get('destination_path', self._build_destination_path())
@@ -463,23 +470,35 @@ class DataExtractionOrchestrator:
                     )
                     files_created.append(file_path)
                     total_records += len(chunk_df)
-
-                    # 🎯 SOLO ACTUALIZAR WATERMARK SI ES ESTRATEGIA INCREMENTAL
+                    self.logger.info(f"🔍 DEBUG Init Validate")  
+                    # 🎯 ACTUALIZAR MAX VALUE SI HAY PARTITION COLUMN (para cualquier estrategia)
                     if (self.table_config.partition_column and 
-                        self.table_config.partition_column in chunk_df.columns and
-                        self.strategy.get_strategy_name() == 'incremental'):  # 👈 VERIFICAR ESTRATEGIA
-                        
+                        self.table_config.partition_column in chunk_df.columns):                        
                         chunk_max = chunk_df[self.table_config.partition_column].max()
+                        self.logger.info(f"🔍 DEBUG Chunk max value: {chunk_max}")                        
                         if max_extracted_value is None or chunk_max > max_extracted_value:
                             max_extracted_value = chunk_max
-
+                            self.logger.info(f"🔍 DEBUG Updated max_extracted_value: {max_extracted_value}")
+                    else:
+                        self.logger.info(f"🔍 DEBUG Init Validate is False")  
                     chunk_count += 1
             
+            # Debug final antes de guardar watermark
+            self.logger.info(f"🔍 DEBUG Final max_extracted_value: {max_extracted_value}")
+            self.logger.info(f"🔍 DEBUG Strategy name for comparison: '{self.strategy.get_strategy_name()}'")
+            
             # 🎯 SOLO GUARDAR WATERMARK SI ES INCREMENTAL Y HAY WATERMARK STORAGE
+            strategy_name = self.strategy.get_strategy_name().lower()
+            is_incremental = strategy_name in ['incremental', 'incrementalstrategy']
+            
+            self.logger.info(f"🔍 DEBUG is_incremental: {is_incremental}")
+            
             if (max_extracted_value is not None and 
                 self.watermark_storage and 
                 self.table_config.partition_column and
-                self.strategy.get_strategy_name() == 'incremental'):
+                is_incremental):
+                
+                self.logger.info(f"🔍 DEBUG Attempting to save watermark...")
                 
                 success = self.watermark_storage.set_last_extracted_value(
                     table_name=self.table_config.stage_table_name,
@@ -495,12 +514,19 @@ class DataExtractionOrchestrator:
                 )
                 
                 if success:
-                    self.logger.info(f"Updated watermark: {self.table_config.stage_table_name}.{self.table_config.partition_column} = {max_extracted_value}")
+                    self.logger.info(f"✅ Updated watermark: {self.table_config.stage_table_name}.{self.table_config.partition_column} = {max_extracted_value}")
                 else:
-                    self.logger.warning(f"Failed to update watermark for {self.table_config.stage_table_name}")
+                    self.logger.warning(f"❌ Failed to update watermark for {self.table_config.stage_table_name}")
             
             elif max_extracted_value is not None:
-                self.logger.info(f"Max value extracted: {max_extracted_value} (not saved as watermark - strategy: {self.strategy.get_strategy_name()})")
+                self.logger.info(f"📊 Max value extracted: {max_extracted_value}")
+                self.logger.info(f"💡 Watermark not saved because:")
+                self.logger.info(f"   - Watermark storage: {self.watermark_storage is not None}")
+                self.logger.info(f"   - Partition column: {self.table_config.partition_column}")
+                self.logger.info(f"   - Is incremental: {is_incremental}")
+                self.logger.info(f"   - Strategy: {self.strategy.get_strategy_name()}")
+            else:
+                self.logger.info("🔍 No max_extracted_value found - no watermark to save")
             
             # Si hay múltiples archivos, retornar el primero como representativo
             return files_created[0] if files_created else None, total_records

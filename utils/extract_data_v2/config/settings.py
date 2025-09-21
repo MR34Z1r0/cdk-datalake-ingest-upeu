@@ -127,7 +127,7 @@ class Settings:
             'EXTRACTOR_TYPE': os.getenv('EXTRACTOR_TYPE', 'sqlserver'),
             'LOADER_TYPE': os.getenv('LOADER_TYPE', 's3'),
             'MONITOR_TYPE': os.getenv('MONITOR_TYPE', 'dynamodb'),
-            'AWS_PROFILE': os.getenv('AWS_PROFILE', 'prd-upeu-admin'),
+            'AWS_PROFILE': os.getenv('AWS_PROFILE', 'prod-upeu-admin'),
             'WATERMARK_STORAGE_TYPE': os.getenv('WATERMARK_STORAGE_TYPE', 'dynamodb'),
             'WATERMARK_TABLE': os.getenv('WATERMARK_TABLE', 'sofia-dev-datalake-watermarks-ddb'),
             'WATERMARK_CSV_PATH': os.getenv('WATERMARK_CSV_PATH', '../../artifacts/configuration/csv/watermarks.csv'),

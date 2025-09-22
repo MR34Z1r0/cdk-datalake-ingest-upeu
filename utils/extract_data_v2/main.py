@@ -93,8 +93,8 @@ Examples:
     parser.add_argument(
         '--chunk-size',
         type=int,
-        default=1000000,
-        help='Chunk size for large table processing (default: 1000000)'
+        default=500000,
+        help='Chunk size for large table processing (default: 500000)'
     )
     
     parser.add_argument(
@@ -176,7 +176,7 @@ def create_extraction_config(args) -> ExtractionConfig:
         dynamo_logs_table=base_config.get('DYNAMO_LOGS_TABLE'),
         topic_arn=base_config.get('TOPIC_ARN'),
         max_threads=base_config.get('MAX_THREADS', 6),
-        chunk_size=base_config.get('CHUNK_SIZE', 1000000),
+        chunk_size=base_config.get('CHUNK_SIZE', 500000),
         force_full_load=base_config.get('FORCE_FULL_LOAD', False),
         output_format=base_config.get('OUTPUT_FORMAT', 'parquet')
     )

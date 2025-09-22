@@ -58,7 +58,7 @@ class SQLServerExtractor(ExtractorInterface):
         try:
             if not self.connection:
                 self.connect()
-            
+            print("SINGLE QUERY: {query}")
             if params:
                 df = pd.read_sql(query, self.connection, params=params)
             else:
@@ -83,8 +83,8 @@ class SQLServerExtractor(ExtractorInterface):
             while True:
                 # Add ORDER BY and OFFSET/FETCH to the query
                 chunked_query = f"{query.rstrip().rstrip(';')} ORDER BY {order_by} OFFSET {offset} ROWS FETCH NEXT {chunk_size} ROWS ONLY"
-                
-                if params:
+                print("CHUNKED QUERY: {chunked_query}")
+                if params: 
                     df = pd.read_sql(chunked_query, self.connection, params=params)
                 else:
                     df = pd.read_sql(chunked_query, self.connection)
@@ -116,11 +116,15 @@ class SQLServerExtractor(ExtractorInterface):
         """
         try:
             if chunk_size and order_by:
+                print("QUERY_CHUNKED")
+                print(f"CHUNK SIZE: {chunk_size}  ORDER BY: {order_by} PARAMS: {params}")
                 # Use chunked extraction
                 for chunk_df in self.execute_query_chunked(query, chunk_size, order_by, params):
                     yield chunk_df
             else:
                 # Execute as single query
+                print("QUERY_SINGLE")
+                print(f"PARAMS: {params}")
                 df = self.execute_query(query, params)
                 if not df.empty:
                     yield df

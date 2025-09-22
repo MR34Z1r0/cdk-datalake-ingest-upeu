@@ -738,7 +738,7 @@ class DataExtractor:
             # Use CSV format as fallback
             csv_buffer = io.StringIO()
             df.to_csv(csv_buffer, index=False, sep='|', quoting=1)
-            csv_bytes = csv_buffer.getvalue().encode('utf-8')
+            csv_bytes = csv_buffer.getvalue().encode('latin1')
             
             # Use .csv extension
             csv_key = key.replace('.parquet', '.csv')

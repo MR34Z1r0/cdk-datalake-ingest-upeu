@@ -190,7 +190,7 @@ class CdkDatalakeIngestUpeuInstanceStack(Stack):
                         "process_id": process_id,
                         "instance": self.instance_name,
                         "scheduled_execution": True,
-                        "run_extract": True,
+                        "run_extract": False,
                     }),
                     integration_pattern=sfn.IntegrationPattern.RUN_JOB  # Synchronous execution
                 )
@@ -561,7 +561,7 @@ class CdkDatalakeIngestUpeuInstanceStack(Stack):
         try:
             csv_path = f'{self.paths.LOCAL_ARTIFACTS_CONFIGURE_CSV}/programmer.csv'
             
-            with open(csv_path, newline='', encoding='utf-8') as csvfile:
+            with open(csv_path, newline='', encoding='latin1') as csvfile:
                 reader = csv.DictReader(csvfile, delimiter=';')
                 for row in reader:
                     row_instance = row.get('INSTANCE', '').upper()

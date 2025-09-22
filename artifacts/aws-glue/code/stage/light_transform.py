@@ -91,7 +91,7 @@ class ConfigurationManager:
             key = '/'.join(s3_path.split('/')[3:])
             
             response = self.s3_client.get_object(Bucket=bucket, Key=key)
-            content = response['Body'].read().decode('utf-8')  # Cambio a UTF-8
+            content = response['Body'].read().decode('latin1')  # Cambio a UTF-8
             
             csv_data = []
             reader = csv.DictReader(StringIO(content), delimiter=';')
@@ -345,15 +345,19 @@ class DeltaTableManager:
     
     def write_delta_table(self, df, s3_path: str, partition_columns: List[str], 
                          mode: str = "overwrite") -> None:
-        """Escribe DataFrame a tabla Delta con optimizaciones"""
+        """Escribe DataFrame a tabla Delta con optimizaciones válidas"""
         writer = df.write.format("delta").mode(mode)
         
         if partition_columns:
             writer = writer.partitionBy(*partition_columns)
         
-        # Optimizaciones
-        writer = writer.option("delta.autoOptimize.optimizeWrite", "true")
-        writer = writer.option("delta.autoOptimize.autoCompact", "true")
+        # Configuraciones Delta válidas
+        writer = writer.option("delta.deletedFileRetentionDuration", "interval 7 days")
+        writer = writer.option("delta.logRetentionDuration", "interval 30 days")
+        
+        # Optimización a nivel de Spark (no Delta específico)
+        writer = writer.option("spark.sql.adaptive.enabled", "true")
+        writer = writer.option("spark.sql.adaptive.coalescePartitions.enabled", "true")
         
         writer.save(s3_path)
     
@@ -361,16 +365,30 @@ class DeltaTableManager:
         """Realiza merge en tabla Delta"""
         delta_table = DeltaTable.forPath(self.spark, s3_path)
         
+        # Eliminar duplicados antes del merge para mejorar performance
+        df_deduplicated = df.dropDuplicates()
+        
         delta_table.alias("old").merge(
-            df.alias("new"), 
+            df_deduplicated.alias("new"), 
             merge_condition
         ).whenMatchedUpdateAll().whenNotMatchedInsertAll().execute()
     
     def optimize_delta_table(self, s3_path: str) -> None:
-        """Optimiza tabla Delta"""
-        delta_table = DeltaTable.forPath(self.spark, s3_path)
-        delta_table.vacuum(100)
-        delta_table.generate("symlink_format_manifest")
+        """Optimiza tabla Delta con comandos válidos"""
+        try:
+            delta_table = DeltaTable.forPath(self.spark, s3_path)
+            
+            # OPTIMIZE - compacta archivos pequeños
+            self.spark.sql(f"OPTIMIZE delta.`{s3_path}`")
+            
+            # VACUUM - limpia archivos viejos (más de 7 días)
+            delta_table.vacuum(168)  # 168 horas = 7 días
+            
+            # Generar manifest para compatibilidad con otros sistemas
+            delta_table.generate("symlink_format_manifest")
+            
+        except Exception as e:
+            logger.warning(f"Error optimizando tabla Delta en {s3_path}: {str(e)}")
 
 class DataProcessor:
     """Procesador principal de datos optimizado"""
@@ -599,7 +617,7 @@ def main():
          'TABLES_CSV_S3', 'CREDENTIALS_CSV_S3', 'COLUMNS_CSV_S3', 'ENDPOINT_NAME', 'ENVIRONMENT']
     )
     
-    # Configurar Spark con optimizaciones
+    # Configurar Spark con optimizaciones válidas
     spark = SparkSession.builder \
         .config("spark.sql.extensions", "io.delta.sql.DeltaSparkSessionExtension") \
         .config("spark.sql.catalog.spark_catalog", "org.apache.spark.sql.delta.catalog.DeltaCatalog") \
@@ -607,8 +625,18 @@ def main():
         .config("spark.databricks.delta.schema.autoMerge.enabled", "true") \
         .config("spark.sql.adaptive.enabled", "true") \
         .config("spark.sql.adaptive.coalescePartitions.enabled", "true") \
+        .config("spark.sql.adaptive.skewJoin.enabled", "true") \
+        .config("spark.sql.adaptive.localShuffleReader.enabled", "true") \
         .config("spark.serializer", "org.apache.spark.serializer.KryoSerializer") \
+        .config("spark.sql.parquet.datetimeRebaseModeInRead", "CORRECTED") \
+        .config("spark.sql.parquet.datetimeRebaseModeInWrite", "LEGACY") \
+        .config("spark.sql.legacy.timeParserPolicy", "LEGACY") \
+        .config("spark.sql.parquet.int96RebaseModeInWrite", "CORRECTED") \
         .getOrCreate()
+    
+    # Configurar sistema de archivos S3
+    spark.sparkContext._jsc.hadoopConfiguration().set("fs.s3.impl", "org.apache.hadoop.fs.s3a.S3AFileSystem")
+    spark.sparkContext._jsc.hadoopConfiguration().set("mapreduce.fileoutputcommitter.marksuccessfuljobs", "false")
     
     # Inicializar componentes
     s3_client = boto3.client('s3')

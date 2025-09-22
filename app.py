@@ -32,7 +32,7 @@ def read_tables_csv_and_create_process_config(csv_file_path):
     process_config = {}
     process_ids = set()
     
-    with open(csv_file_path, newline='', encoding='utf-8') as csvfile:
+    with open(csv_file_path, newline='', encoding='latin1') as csvfile:
         reader = csv.DictReader(csvfile, delimiter=';')
         for row in reader:
             if row['STATUS'].upper() == 'A' and row['PROCESS_ID']:
@@ -116,7 +116,7 @@ shared_tables = {}
 shared_job_registry = {}
 shared_lambda_registry = {}
 
-with open(f'{project_paths.LOCAL_ARTIFACTS_CONFIGURE_CSV}/tables.csv', newline='', encoding='utf-8') as tables_file:
+with open(f'{project_paths.LOCAL_ARTIFACTS_CONFIGURE_CSV}/tables.csv', newline='', encoding='latin1') as tables_file:
     tables_reader = csv.DictReader(tables_file, delimiter=';')
     for row in tables_reader:
         if row['PROCESS_ID'] and row['SOURCE_SCHEMA'] and row['SOURCE_TABLE'] and row['STATUS'].upper() == 'A':
@@ -132,7 +132,7 @@ instance_groups = {}  # instance -> list of db_names
 current_env = project_config.environment.value.upper()  # Get current environment (DEV/PROD)
 #print(f"current_env: {current_env}")
 #print(f"shared_tables: {shared_tables}")
-with open(f'{project_paths.LOCAL_ARTIFACTS_CONFIGURE_CSV}/credentials.csv', newline='', encoding='utf-8') as creds_file:
+with open(f'{project_paths.LOCAL_ARTIFACTS_CONFIGURE_CSV}/credentials.csv', newline='', encoding='latin1') as creds_file:
     creds_reader = csv.DictReader(creds_file, delimiter=';')
     for row in creds_reader:
         # Only include databases for the current environment

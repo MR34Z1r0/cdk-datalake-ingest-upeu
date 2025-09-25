@@ -315,13 +315,12 @@ class TransformationEngine:
                 lit(None).cast(BooleanType())
             ).otherwise(
                 when(
-                    col(origin_column).cast(StringType()).upper().isin(["1", "TRUE", "T", "YES", "Y"]), 
-                    True
+                    upper(trim(col(origin_column))).isin(["1", "TRUE", "T", "YES", "Y", "SI", "S"]), 
+                    lit(True).cast(BooleanType())
                 ).when(
-                    col(origin_column).cast(StringType()).upper().isin(["0", "FALSE", "F", "NO", "N"]), 
-                    False
+                    upper(trim(col(origin_column))).isin(["0", "FALSE", "F", "NO", "N"]), 
+                    lit(False).cast(BooleanType())
                 ).otherwise(
-                    # Si no es un valor booleano reconocible, NULL
                     lit(None).cast(BooleanType())
                 )
             )

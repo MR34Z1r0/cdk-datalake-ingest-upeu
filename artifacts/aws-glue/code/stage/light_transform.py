@@ -270,6 +270,7 @@ class TransformationEngine:
     
     def _create_transformation_expr(self, function_name: str, params: List[str], data_type: str):
         """Crea expresión de transformación para función específica"""
+        logger.info(f"Aplicando transformación: {function_name} con parámetros: {params} y tipo: {data_type}")
         param_list = params if params else []
         
         if function_name == 'fn_transform_Concatenate':
@@ -288,43 +289,23 @@ class TransformationEngine:
                 raise TransformationException("fn_transform_Integer", "Requiere nombre de columna")
             origin_column = param_list[0]
             
-            # Solo convertir a NULL si realmente es NULL o string vacío/espacios
-            return when(
-                col(origin_column).isNull(),
+            # Versión ultra-simple
+            return coalesce(
+                col(origin_column).cast(IntegerType()),
                 lit(None).cast(IntegerType())
-            ).when(
-                col(origin_column).cast(StringType()).rlike("^\\s*$"),
-                lit(None).cast(IntegerType())
-            ).otherwise(
-                # Intentar conversión, si falla devolver NULL
-                when(col(origin_column).cast(StringType()).rlike("^-?\\d+$"), 
-                    col(origin_column).cast(IntegerType())
-                ).otherwise(lit(None).cast(IntegerType()))
             )
-        
-        elif function_name == 'fn_transform_Boolean':
+
+        elif function_name == 'fn_transform_Double':
             if not param_list:
-                raise TransformationException("fn_transform_Boolean", "Requiere nombre de columna")
+                raise TransformationException("fn_transform_Double", "Requiere nombre de columna")
             origin_column = param_list[0]
             
-            return when(
-                col(origin_column).isNull(),
-                lit(None).cast(BooleanType())
-            ).when(
-                col(origin_column).cast(StringType()).rlike("^\\s*$"),
-                lit(None).cast(BooleanType())
-            ).otherwise(
-                when(
-                    upper(trim(col(origin_column))).isin(["1", "TRUE", "T", "YES", "Y", "SI", "S"]), 
-                    lit(True).cast(BooleanType())
-                ).when(
-                    upper(trim(col(origin_column))).isin(["0", "FALSE", "F", "NO", "N"]), 
-                    lit(False).cast(BooleanType())
-                ).otherwise(
-                    lit(None).cast(BooleanType())
-                )
+            # Versión ultra-simple
+            return coalesce(
+                col(origin_column).cast(DoubleType()),
+                lit(None).cast(DoubleType())
             )
-        
+
         elif function_name == 'fn_transform_Numeric':
             if not param_list:
                 raise TransformationException("fn_transform_Numeric", "Requiere nombre de columna")
@@ -332,21 +313,21 @@ class TransformationEngine:
             
             decimal_type = self._parse_decimal_type(data_type)
             
-            return when(
-                col(origin_column).isNull(),
+            # Versión ultra-simple
+            return coalesce(
+                col(origin_column).cast(decimal_type),
                 lit(None).cast(decimal_type)
-            ).when(
-                col(origin_column).cast(StringType()).rlike("^\\s*$"),
-                lit(None).cast(decimal_type)
-            ).when(
-                col(origin_column).cast(StringType()).upper().isin(["NAN", "INF", "-INF", "INFINITY", "-INFINITY"]),
-                lit(None).cast(decimal_type)
-            ).otherwise(
-                # Intentar conversión numérica
-                when(
-                    col(origin_column).cast(StringType()).rlike("^-?\\d*\\.?\\d*$"),
-                    col(origin_column).cast(decimal_type)
-                ).otherwise(lit(None).cast(decimal_type))
+            )
+
+        elif function_name == 'fn_transform_Boolean':
+            if not param_list:
+                raise TransformationException("fn_transform_Boolean", "Requiere nombre de columna")
+            origin_column = param_list[0]
+            
+            # Versión ultra-simple usando coalesce como los demás
+            return coalesce(
+                col(origin_column).cast(BooleanType()),
+                lit(None).cast(BooleanType())
             )
         
         elif function_name == 'fn_transform_ClearString':
@@ -365,7 +346,7 @@ class TransformationEngine:
                 return when(
                     col(origin_column).isNull() | 
                     (trim(col(origin_column)) == "") |
-                    (trim(col(origin_column)) == "None"),  # Agregar check para "None"
+                    (trim(col(origin_column)).isin(["None", "NULL", "null"])),  # MÁS CASOS
                     default_expr
                 ).otherwise(trim(col(origin_column)))
             else:
@@ -373,8 +354,8 @@ class TransformationEngine:
                 return when(
                     col(origin_column).isNull() |
                     (trim(col(origin_column)) == "") |
-                    (trim(col(origin_column)) == "None"),  # Agregar check para "None"
-                    lit(None).cast(StringType())  # NULL real, no string "None"
+                    (trim(col(origin_column)).isin(["None", "NULL", "null"])),  # MÁS CASOS
+                    lit(None).cast(StringType())
                 ).otherwise(
                     trim(col(origin_column))
                 )

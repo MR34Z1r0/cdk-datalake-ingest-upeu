@@ -13,4 +13,6 @@ for /f %%T in (tables.txt) do (
     python main.py -t %%T
 )
 
+python execute_stage.py
+
 pause

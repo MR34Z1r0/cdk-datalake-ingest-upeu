@@ -3,9 +3,9 @@ from typing import List, Dict, Any
 from interfaces.strategy_interface import StrategyInterface
 from ..base.extraction_strategy import ExtractionStrategy
 from ..base.extraction_params import ExtractionParams
-from aje_libs.common.logger import custom_logger
+from aje_libs.common.datalake_logger import DataLakeLogger
 
-logger = custom_logger(__name__)
+logger = DataLakeLogger.get_logger(__name__)
 
 class StrategyAdapter(StrategyInterface):
     """Adaptador para hacer compatible la nueva estrategia con la interfaz existente"""
@@ -19,13 +19,17 @@ class StrategyAdapter(StrategyInterface):
         """Adapta el nuevo método build_extraction_params al formato esperado"""
         logger.info("=== STRATEGY ADAPTER - Generating Queries ===")
         
-        # Obtener parámetros de extracción de la nueva estrategia
+        # Obtener parámetros de extracción
         self.extraction_params = self.new_strategy.build_extraction_params()
         
-        # Construir query SQL
+        # Verificar si necesita particionado
+        if self.extraction_params.metadata.get('needs_partitioning', False):
+            logger.info("Partitioned load detected - returning min/max query")
+            return self._generate_min_max_query()
+        
+        # Para cargas estándar
         query = self._build_query_from_params(self.extraction_params)
         
-        # Adaptar al formato esperado por el orchestrator
         query_dict = {
             'query': query,
             'thread_id': 0,
@@ -38,11 +42,45 @@ class StrategyAdapter(StrategyInterface):
             }
         }
         
-        logger.info(f"Generated query for table: {self.extraction_params.table_name}")
-        logger.info("=== END STRATEGY ADAPTER ===")
-        
         return [query_dict]
     
+    def _generate_min_max_query(self) -> List[Dict[str, Any]]:
+        """Genera query de min/max para particionado"""
+        partition_column = self.extraction_params.metadata['partition_column']
+        
+        # Usar el table_name completo que ya incluye el schema y JOIN si está configurado
+        table_name_with_joins = self.extraction_params.table_name
+        
+        # Construir query de min/max completa
+        min_max_query = f"SELECT MIN({partition_column}) as min_val, MAX({partition_column}) as max_val FROM {table_name_with_joins}"
+        
+        # Agregar condición WHERE para partition column != 0
+        where_conditions = [f"{partition_column} <> 0"]
+        
+        # Agregar otros filtros si existen
+        existing_where = self.extraction_params.get_where_clause()
+        if existing_where:
+            where_conditions.append(existing_where)
+        
+        # Construir clausula WHERE completa
+        if where_conditions:
+            min_max_query += f" WHERE {' AND '.join(where_conditions)}"
+        
+        logger.info(f"Generated Min/Max query: {min_max_query}")
+        
+        return [{
+            'query': min_max_query,
+            'thread_id': 0,
+            'metadata': {
+                'strategy': self.new_strategy.strategy_name,
+                'table_name': self.new_strategy.extraction_config.table_name,
+                'query_type': 'min_max',
+                'partition_column': partition_column,
+                'needs_partitioned_queries': True,
+                **self.extraction_params.metadata
+            }
+        }]
+
     def get_strategy_name(self) -> str:
         """Delega al nombre de la nueva estrategia"""
         return self.new_strategy.strategy_name
@@ -58,10 +96,10 @@ class StrategyAdapter(StrategyInterface):
     def _build_query_from_params(self, params: ExtractionParams) -> str:
         """Construye la query SQL a partir de los parámetros de extracción"""
         
-        # SELECT clause
-        columns_str = params.get_columns_string()
+        # SELECT clause - usar las columnas tal como vienen procesadas
+        columns_str = ', '.join(params.columns) if params.columns != ['*'] else '*'
         
-        # FROM clause
+        # FROM clause con JOINs incluidos
         table_name = params.table_name
         
         # WHERE clause

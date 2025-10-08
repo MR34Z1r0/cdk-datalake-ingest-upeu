@@ -13,6 +13,7 @@ import re
 
 import boto3
 import pytz
+import uuid
 from awsglue.context import GlueContext
 from awsglue.job import Job
 from awsglue.transforms import *
@@ -25,16 +26,497 @@ from pyspark.sql.functions import *
 from pyspark.sql import Window
 from pyspark.sql.types import *
 from pyspark.sql.session import SparkSession
-
-# Configuración de logging
-logging.basicConfig(format="%(asctime)s %(name)s %(levelname)s %(message)s")
-logger = logging.getLogger("LightTransform")
-logger.setLevel(os.environ.get("LOGGING", logging.INFO))
-
+# Agregar estos imports después de los imports existentes
+ 
 # Constantes
 TZ_LIMA = pytz.timezone('America/Lima')
 BASE_DATE_MAGIC = "1900-01-01"
 MAGIC_OFFSET = 693596
+
+class Monitor:
+    """
+    Monitor para Light Transform siguiendo el patrón de extract_data_v2
+    Centraliza todas las llamadas de logging a DynamoDB para evitar duplicados
+    """
+    
+    def __init__(self, dynamo_logger):
+        """
+        Inicializa el monitor con un DynamoDBLogger
+        
+        Args:
+            dynamo_logger: Instancia de DynamoDBLogger para registrar eventos
+        """
+        self.dynamo_logger = dynamo_logger
+        self.process_id: Optional[str] = None
+    
+    def log_start(self, table_name: str, job_name: str, context: Dict[str, Any] = None) -> str:
+        """
+        Registra el inicio de la transformación - ÚNICA LLAMADA
+        
+        Args:
+            table_name: Nombre de la tabla a transformar
+            job_name: Nombre del job de Glue
+            context: Contexto adicional para el log
+            
+        Returns:
+            process_id: ID único del proceso
+        """
+        self.process_id = self.dynamo_logger.log_start(
+            table_name=table_name,
+            job_name=job_name,
+            context=context or {}
+        )
+        return self.process_id
+    
+    def log_success(self, table_name: str, job_name: str, context: Dict[str, Any] = None) -> str:
+        """
+        Registra el éxito de la transformación - ÚNICA LLAMADA
+        
+        Args:
+            table_name: Nombre de la tabla transformada
+            job_name: Nombre del job de Glue
+            context: Contexto adicional para el log
+            
+        Returns:
+            process_id: ID único del proceso
+        """
+        return self.dynamo_logger.log_success(
+            table_name=table_name,
+            job_name=job_name,
+            context=context or {}
+        )
+    
+    def log_error(self, table_name: str, error_message: str, job_name: str, context: Dict[str, Any] = None) -> str:
+        """
+        Registra un error en la transformación - ÚNICA LLAMADA
+        
+        Args:
+            table_name: Nombre de la tabla donde ocurrió el error
+            error_message: Mensaje de error
+            job_name: Nombre del job de Glue
+            context: Contexto adicional para el log
+            
+        Returns:
+            process_id: ID único del proceso
+        """
+        return self.dynamo_logger.log_failure(
+            table_name=table_name,
+            error_message=error_message,
+            job_name=job_name,
+            context=context or {}
+        )
+    
+    def log_warning(self, table_name: str, warning_message: str, job_name: str, context: Dict[str, Any] = None) -> str:
+        """
+        Registra una advertencia en la transformación
+        
+        Args:
+            table_name: Nombre de la tabla
+            warning_message: Mensaje de advertencia
+            job_name: Nombre del job de Glue
+            context: Contexto adicional para el log
+            
+        Returns:
+            process_id: ID único del proceso
+        """
+        return self.dynamo_logger.log_warning(
+            table_name=table_name,
+            warning_message=warning_message,
+            job_name=job_name,
+            context=context or {}
+        )
+    
+    def get_process_id(self) -> Optional[str]:
+        """Retorna el process_id actual"""
+        return self.process_id
+    
+class DataLakeLogger:
+    """
+    Clase centralizada para logging en DataLake que maneja automáticamente:
+    - AWS CloudWatch (en entorno Glue)
+    - Console output
+    - Detección automática del entorno (AWS vs Local)
+    """
+    
+    # Configuración global por defecto
+    _global_config = {
+        'log_level': logging.INFO,
+        'service_name': 'light_transform',
+        'correlation_id': None,
+        'owner': None,
+        'auto_detect_env': True,
+        'force_local_mode': False
+    }
+    
+    # Cache de loggers para evitar recrear
+    _logger_cache = {}
+    
+    @classmethod
+    def configure_global(cls, 
+                        log_level: Optional[int] = None,
+                        service_name: Optional[str] = None,
+                        correlation_id: Optional[str] = None,
+                        owner: Optional[str] = None,
+                        auto_detect_env: bool = True,
+                        force_local_mode: bool = False):
+        """Configura parámetros globales para todos los loggers"""
+        if log_level is not None:
+            cls._global_config['log_level'] = log_level
+        if service_name is not None:
+            cls._global_config['service_name'] = service_name
+        if correlation_id is not None:
+            cls._global_config['correlation_id'] = correlation_id
+        if owner is not None:
+            cls._global_config['owner'] = owner
+        
+        cls._global_config['auto_detect_env'] = auto_detect_env
+        cls._global_config['force_local_mode'] = force_local_mode
+        
+        # Limpiar cache cuando cambia configuración
+        cls._logger_cache.clear()
+    
+    @classmethod
+    def get_logger(cls, 
+                   name: Optional[str] = None,
+                   service_name: Optional[str] = None,
+                   correlation_id: Optional[str] = None,
+                   log_level: Optional[int] = None) -> logging.Logger:
+        """Obtiene un logger configurado para el entorno actual"""
+        
+        # Usar configuración global como base
+        effective_service = service_name or cls._global_config['service_name']
+        effective_correlation_id = correlation_id or cls._global_config['correlation_id']
+        effective_log_level = log_level or cls._global_config['log_level']
+        
+        # Crear cache key
+        cache_key = f"{name}_{effective_service}_{effective_correlation_id}_{effective_log_level}"
+        
+        # Devolver del cache si existe
+        if cache_key in cls._logger_cache:
+            return cls._logger_cache[cache_key]
+        
+        # Crear logger estándar de Python
+        logger_name = name or effective_service or 'light_transform'
+        logger = logging.getLogger(logger_name)
+        logger.setLevel(effective_log_level)
+        
+        # Limpiar handlers existentes para evitar duplicados
+        if logger.handlers:
+            logger.handlers.clear()
+        
+        # Crear formatter
+        formatter = logging.Formatter(
+            '%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+            datefmt='%Y-%m-%d %H:%M:%S'
+        )
+        
+        # Handler para consola (CloudWatch en Glue)
+        console_handler = logging.StreamHandler()
+        console_handler.setLevel(effective_log_level)
+        console_handler.setFormatter(formatter)
+        logger.addHandler(console_handler)
+        
+        # Evitar propagación para prevenir logs duplicados
+        logger.propagate = False
+        
+        # Guardar en cache
+        cls._logger_cache[cache_key] = logger
+        
+        return logger
+
+class DynamoDBLogger:
+    """
+    Logger para DynamoDB que registra logs de proceso y envía notificaciones SNS en caso de errores
+    """
+    
+    def __init__(
+        self,
+        table_name: str,
+        sns_topic_arn: Optional[str] = None,
+        team: str = "",
+        data_source: str = "",
+        endpoint_name: str = "",
+        flow_name: str = "",
+        environment: str = "",
+        region: str = "us-east-1",
+        logger_name: Optional[str] = None
+    ):
+        """Inicializa el DynamoDB Logger"""
+        self.table_name = table_name
+        self.sns_topic_arn = sns_topic_arn
+        self.team = team
+        self.data_source = data_source
+        self.endpoint_name = endpoint_name
+        self.flow_name = flow_name
+        self.environment = environment
+        
+        # Configurar timezone Lima
+        self.tz_lima = pytz.timezone('America/Lima')
+        
+        # Obtener logger usando DataLakeLogger
+        self.logger = DataLakeLogger.get_logger(
+            name=logger_name or f"{team}-{data_source}-dynamodb-logger",
+            service_name=f"{team}-{flow_name}",
+            correlation_id=f"{team}-{data_source}-{flow_name}"
+        )
+        
+        # Clientes AWS
+        try:
+            self.dynamodb = boto3.resource('dynamodb', region_name=region)
+            self.dynamodb_table = self.dynamodb.Table(table_name) if table_name else None
+            self.sns_client = boto3.client('sns', region_name=region) if sns_topic_arn else None
+            
+            self.logger.info(f"DynamoDBLogger inicializado - Tabla: {table_name}, SNS: {bool(sns_topic_arn)}")
+            
+        except Exception as e:
+            self.logger.warning(f"Error inicializando clientes AWS: {e}")
+            self.dynamodb_table = None
+            self.sns_client = None
+    
+    def log_process_status(
+        self,
+        status: str,  # RUNNING, SUCCESS, FAILED, WARNING
+        message: str,
+        table_name: str = "",
+        job_name: str = "",
+        context: Optional[Dict[str, Any]] = None
+    ) -> str:
+        """Registra el estatus de un proceso en DynamoDB"""
+        if not self.dynamodb_table:
+            self.logger.warning(f"DynamoDB no configurado, log no registrado: {status} - {message}")
+            return ""
+        
+        try:
+            # Generar timestamp y process_id únicos
+            now_lima = dt.datetime.now(pytz.utc).astimezone(self.tz_lima)
+            timestamp = now_lima.strftime("%Y%m%d_%H%M%S_%f")
+            process_id = f"{self.team}-{self.data_source}-{self.endpoint_name}-{table_name.upper()}"
+            
+            # Preparar contexto con límites de tamaño
+            log_context = self._prepare_context(context or {})
+            
+            # Truncar mensaje si es muy largo
+            truncated_message = message[:2000] + "...[TRUNCATED]" if len(message) > 2000 else message
+            
+            # Crear registro compatible con estructura existente
+            record = {
+                "PROCESS_ID": process_id,
+                "DATE_SYSTEM": timestamp,
+                "RESOURCE_NAME": job_name or "unknown_job",
+                "RESOURCE_TYPE": "python_shell_glue_job",
+                "STATUS": status.upper(),
+                "MESSAGE": truncated_message,
+                "PROCESS_TYPE": self._get_process_type(status),
+                "CONTEXT": log_context,
+                "TEAM": self.team,
+                "DATASOURCE": self.data_source,
+                "ENDPOINT_NAME": self.endpoint_name,
+                "TABLE_NAME": table_name,
+                "ENVIRONMENT": self.environment,
+                "log_created_at": now_lima.strftime("%Y-%m-%d %H:%M:%S")
+            }
+            
+            # Insertar en DynamoDB
+            self.dynamodb_table.put_item(Item=record)
+            self.logger.info(f"Log registrado en DynamoDB - process_id={process_id}, status={status}, table={table_name}")
+            
+            # Enviar notificación SNS si es error
+            if status.upper() == "FAILED":
+                self._send_failure_notification(record)
+            
+            return process_id
+            
+        except Exception as e:
+            self.logger.error(f"Error registrando log en DynamoDB: {e}")
+            
+            # Si falló el registro pero era un error, intentar enviar SNS de emergencia
+            if status.upper() == "FAILED":
+                self._send_emergency_notification(message, table_name, str(e))
+            
+            return ""
+    
+    def log_start(
+        self, 
+        table_name: str, 
+        job_name: str = "",
+        context: Optional[Dict[str, Any]] = None
+    ) -> str:
+        """Registra inicio de proceso"""
+        message = f"Iniciando procesamiento de tabla {table_name} job {job_name}"
+        self.logger.info(message)
+        return self.log_process_status("RUNNING", message, table_name, job_name, context)
+    
+    def log_success(
+        self, 
+        table_name: str, 
+        job_name: str = "",
+        context: Optional[Dict[str, Any]] = None
+    ) -> str:
+        """Registra éxito de proceso"""
+        message = f"Procesamiento exitoso de tabla {table_name} job {job_name}"
+        self.logger.info(message)
+        return self.log_process_status("SUCCESS", message, table_name, job_name, context)
+    
+    def log_failure(
+        self, 
+        table_name: str, 
+        error_message: str,
+        job_name: str = "",
+        context: Optional[Dict[str, Any]] = None
+    ) -> str:
+        """Registra fallo de proceso y envía notificación"""
+        message = f"Error procesando tabla {table_name} job {job_name} error: {error_message}"
+        self.logger.error(message)
+        return self.log_process_status("FAILED", message, table_name, job_name, context)
+    
+    def log_warning(
+        self, 
+        table_name: str, 
+        warning_message: str,
+        job_name: str = "",
+        context: Optional[Dict[str, Any]] = None
+    ) -> str:
+        """Registra advertencia de proceso"""
+        message = f"Advertencia procesando tabla {table_name} job {job_name} warning: {warning_message}"
+        self.logger.warning(message)
+        return self.log_process_status("WARNING", message, table_name, job_name, context)
+    
+    def _prepare_context(self, context: Dict[str, Any]) -> Dict[str, Any]:
+        """Prepara el contexto limitando su tamaño para DynamoDB"""
+        MAX_CONTEXT_SIZE = 300 * 1024  # 300KB
+        
+        def truncate_data(data, max_length=1000):
+            """Trunca estructuras de datos"""
+            if isinstance(data, str):
+                return data[:max_length] + "...[TRUNCATED]" if len(data) > max_length else data
+            elif isinstance(data, dict):
+                truncated = {}
+                for k, v in list(data.items())[:10]:
+                    truncated[k] = truncate_data(v, 500)
+                if len(data) > 10:
+                    truncated["_truncated_items"] = f"...and {len(data) - 10} more items"
+                return truncated
+            elif isinstance(data, list):
+                truncated = [truncate_data(item, 200) for item in data[:5]]
+                if len(data) > 5:
+                    truncated.append(f"...and {len(data) - 5} more items")
+                return truncated
+            else:
+                return str(data)[:500] if data else data
+        
+        prepared_context = truncate_data(context)
+        
+        # Verificar tamaño total
+        context_json = json.dumps(prepared_context, default=str)
+        if len(context_json.encode("utf-8")) > MAX_CONTEXT_SIZE:
+            return {
+                "size_limit_applied": "Context truncated due to DynamoDB size limits",
+                "original_keys": list(context.keys())[:10],
+                "truncated_at": dt.datetime.now(self.tz_lima).strftime("%Y-%m-%d %H:%M:%S")
+            }
+        
+        return prepared_context
+    
+    def _get_process_type(self, status: str) -> str:
+        """Determina el tipo de proceso basado en el status"""
+        if status.upper() in ["RUNNING"]:
+            return "incremental"
+        elif status.upper() in ["SUCCESS"]:
+            return "completed"
+        elif status.upper() in ["WARNING"]:
+            return "incremental_with_warnings"
+        else:
+            return "error_handling"
+    
+    def _send_failure_notification(self, record: Dict[str, Any]):
+        """Envía notificación SNS por error"""
+        if not self.sns_client or not self.sns_topic_arn:
+            self.logger.warning("SNS no configurado, no se puede enviar notificación de error")
+            return
+        
+        try:
+            # Preparar mensaje truncado para SNS
+            message_text = str(record.get("MESSAGE", ""))
+            truncated_message = message_text[:800] + "..." if len(message_text) > 800 else message_text
+            
+            notification_message = f"""
+🚨 PROCESO FALLIDO EN LIGHT TRANSFORM
+
+📊 DETALLES:
+- Estado: {record.get('STATUS')}
+- Tabla: {record.get("TABLE_NAME")}
+- Equipo: {record.get("TEAM")}
+- Flujo: {self.flow_name}
+- Ambiente: {record.get("ENVIRONMENT")}
+- Timestamp: {record.get("log_created_at")}
+
+❌ ERROR:
+{truncated_message}
+
+🔍 IDENTIFICADORES:
+- Process ID: {record.get('PROCESS_ID')}
+- Resource: {record.get('RESOURCE_NAME')}
+
+📋 ACCIONES:
+1. Consulta logs completos en DynamoDB usando el PROCESS_ID
+2. Revisa CloudWatch logs para más detalles
+3. Verifica la configuración de la tabla y transformaciones
+
+⚠️ Este mensaje se envía automáticamente. El job se marca como SUCCESS para evitar dobles notificaciones.
+            """
+            
+            # Enviar notificación
+            self.sns_client.publish(
+                TopicArn=self.sns_topic_arn,
+                Subject=f"🚨 [ERROR] LIGHT TRANSFORM - {record.get('TABLE_NAME')} - {record.get('TEAM')}",
+                Message=notification_message
+            )
+            
+            self.logger.info("Notificación SNS enviada exitosamente")
+            
+        except Exception as e:
+            self.logger.error(f"Error enviando notificación SNS: {e}")
+    
+    def _send_emergency_notification(self, message: str, table_name: str, dynamodb_error: str):
+        """Envía notificación de emergencia cuando falla DynamoDB"""
+        if not self.sns_client or not self.sns_topic_arn:
+            return
+        
+        try:
+            emergency_message = f"""
+🆘 NOTIFICACIÓN DE EMERGENCIA - FALLO EN SISTEMA DE LOGGING
+
+⚠️ SITUACIÓN CRÍTICA:
+El proceso falló Y el sistema de logging a DynamoDB también falló.
+
+📊 DETALLES DEL ERROR ORIGINAL:
+- Tabla: {table_name}
+- Equipo: {self.team}
+- Flujo: {self.flow_name}
+- Error: {message[:500]}
+
+🔧 ERROR DE DYNAMODB:
+{dynamodb_error[:300]}
+
+🚨 ACCIÓN REQUERIDA:
+1. Revisar logs de CloudWatch INMEDIATAMENTE
+2. Verificar conectividad a DynamoDB
+3. Revisar permisos IAM
+4. Investigar el error original del proceso
+
+⚠️ Sin logging en DynamoDB, la trazabilidad está comprometida.
+            """
+            
+            self.sns_client.publish(
+                TopicArn=self.sns_topic_arn,
+                Subject=f"🆘 [EMERGENCIA] Sistema de Logging Fallido - {table_name}",
+                Message=emergency_message
+            )
+            
+            self.logger.critical("Notificación de emergencia enviada")
+            
+        except Exception as e:
+            self.logger.critical(f"Error crítico: No se pudo enviar notificación de emergencia: {e}")
 
 @dataclass
 class ColumnMetadata:
@@ -119,7 +601,7 @@ class ConfigurationManager:
         return sanitized
 
 class ExpressionParser:
-    """Parser robusto para expresiones de transformación"""
+    """Parser robusto para expresiones de transformación con soporte para funciones anidadas"""
     
     def __init__(self):
         self.function_pattern = re.compile(r'(\w+)\((.*)\)$')
@@ -127,6 +609,7 @@ class ExpressionParser:
     def parse_transformation(self, expression: str) -> List[Tuple[str, List[str]]]:
         """
         Parsea expresión de transformación y retorna lista de (función, parámetros)
+        Ahora soporta funciones anidadas
         """
         if not expression or expression.strip() == '':
             return []
@@ -142,14 +625,19 @@ class ExpressionParser:
         function_name = match.group(1)
         params_str = match.group(2)
         
-        # Extraer parámetros
+        # Extraer parámetros (que pueden contener funciones anidadas)
         params = self._extract_parameters(params_str) if params_str else []
         functions_with_params.append((function_name, params))
         
         return functions_with_params
     
     def _extract_parameters(self, params_str: str) -> List[str]:
-        """Extrae parámetros de una función manejando comas en strings"""
+        """
+        Extrae parámetros de una función manejando:
+        - Comas en strings
+        - Paréntesis anidados (para funciones anidadas)
+        - Comillas
+        """
         if not params_str:
             return []
         
@@ -172,6 +660,7 @@ class ExpressionParser:
                 paren_count -= 1
                 current_param += char
             elif char == ',' and paren_count == 0 and not in_quotes:
+                # Coma a nivel raíz, es separador de parámetros
                 if current_param.strip():
                     params.append(current_param.strip())
                 current_param = ""
@@ -187,15 +676,16 @@ class ExpressionParser:
         return params
 
 class TransformationEngine:
-    """Motor de transformaciones optimizado"""
+    """Motor de transformaciones optimizado con soporte para funciones anidadas"""
     
     def __init__(self, spark_session):
         self.spark = spark_session
         self.parser = ExpressionParser()
+        self.logger = DataLakeLogger.get_logger(__name__)
     
     def apply_transformations(self, df, columns_metadata: List[ColumnMetadata]) -> Tuple[Any, List[str]]:
         """
-        Aplica todas las transformaciones de manera optimizada
+        Aplica todas las transformaciones de manera optimizada con soporte para funciones anidadas
         Retorna (DataFrame transformado, lista de errores)
         """
         errors = []
@@ -206,27 +696,23 @@ class TransformationEngine:
         
         for column_meta in sorted_columns:
             try:
-                expr = self._build_transformation_expression(column_meta)
+                expr = self._build_transformation_expression(column_meta, df)
                 if expr is not None:
                     transformation_exprs.append(expr.alias(column_meta.name))
                 else:
                     # Columna simple sin transformación
                     if column_meta.transformation and column_meta.transformation.strip():
-                        # Si hay transformación pero no se pudo parsear, usar la columna original
                         transformation_exprs.append(col(column_meta.transformation).alias(column_meta.name))
                     else:
-                        # Sin transformación definida, crear columna null con tipo apropiado
                         spark_type = self._get_spark_type(column_meta.data_type)
                         transformation_exprs.append(lit(None).cast(spark_type).alias(column_meta.name))
             except Exception as e:
                 error_msg = f"Error en columna {column_meta.name}: {str(e)}"
                 errors.append(error_msg)
-                logger.error(error_msg)
-                # Agregar columna con valor null apropiado en caso de error
+                self.logger.error(error_msg)
                 spark_type = self._get_spark_type(column_meta.data_type)
                 transformation_exprs.append(lit(None).cast(spark_type).alias(column_meta.name))
         
-        # Aplicar todas las transformaciones en una sola operación
         if transformation_exprs:
             transformed_df = df.select(*transformation_exprs)
         else:
@@ -234,189 +720,341 @@ class TransformationEngine:
         
         return transformed_df, errors
     
-    def _get_spark_type(self, data_type: str):
-        """Convierte string de tipo a tipo Spark"""
-        type_mapping = {
-            'string': StringType(),
-            'int': IntegerType(),
-            'integer': IntegerType(),
-            'double': DoubleType(),
-            'float': DoubleType(),
-            'boolean': BooleanType(),
-            'timestamp': TimestampType(),
-            'date': DateType()
-        }
-        
-        if 'numeric' in data_type.lower():
-            return self._parse_decimal_type(data_type)
-        
-        return type_mapping.get(data_type.lower(), StringType())
-    
-    def _build_transformation_expression(self, column_meta: ColumnMetadata):
-        """Construye expresión de transformación para una columna"""
+    def _build_transformation_expression(self, column_meta: ColumnMetadata, df):
+        """Construye expresión de transformación para una columna con soporte para funciones anidadas"""
         functions_with_params = self.parser.parse_transformation(column_meta.transformation)
         
         if not functions_with_params:
             return None
         
         if len(functions_with_params) == 1 and functions_with_params[0][0] == 'simple_column':
-            # Es una columna simple
             column_name = functions_with_params[0][1][0] if functions_with_params[0][1] else column_meta.name
             return col(column_name)
         
-        # Es una función
+        # Es una función (puede tener funciones anidadas)
         function_name, params = functions_with_params[0]
-        return self._create_transformation_expr(function_name, params, column_meta.data_type)
+        return self._create_transformation_expr_with_nesting(function_name, params, column_meta.data_type, df)
     
-    def _create_transformation_expr(self, function_name: str, params: List[str], data_type: str):
-        """Crea expresión de transformación para función específica"""
-        logger.info(f"Aplicando transformación: {function_name} con parámetros: {params} y tipo: {data_type}")
-        param_list = params if params else []
+    def _create_transformation_expr_with_nesting(self, function_name: str, params: List[str], data_type: str, df):
+        """
+        Crea expresión de transformación con soporte para funciones anidadas
+        Procesa recursivamente las funciones internas
+        """
+        self.logger.info(f"Aplicando transformación: {function_name} con parámetros: {params}")
         
+        # Procesar parámetros: pueden ser columnas simples, literales o funciones anidadas
+        processed_params = []
+        
+        for param in params:
+            param = param.strip()
+            
+            # Verificar si el parámetro es una función anidada
+            if param.startswith('fn_transform_'):
+                # Es una función anidada, parsearla y procesarla recursivamente
+                nested_functions = self.parser.parse_transformation(param)
+                if nested_functions and nested_functions[0][0] != 'simple_column':
+                    nested_function_name, nested_params = nested_functions[0]
+
+                    # CAMBIO 1: Determinar el tipo correcto basado en la función
+                    nested_type = self._infer_function_return_type(nested_function_name)
+                
+                    # Llamada recursiva
+                    nested_expr = self._create_transformation_expr_with_nesting(
+                        nested_function_name, 
+                        nested_params, 
+                        nested_type,  # tipo temporal
+                        df
+                    )
+                    processed_params.append(nested_expr)
+                else:
+                    # Si no se puede parsear, usar como literal
+                    processed_params.append(lit(param))
+            else:
+                # Es una columna simple o literal
+                if param in df.columns:
+                    processed_params.append(col(param))
+                else:
+                    # Es un literal
+                    processed_params.append(param)  # Mantener como string para procesamiento posterior
+        
+        # Aplicar la función con los parámetros procesados
+        return self._apply_transformation_function(function_name, processed_params, data_type)
+    
+    def _infer_function_return_type(self, function_name: str) -> str:
+        """
+        Infiere el tipo de retorno de una función de transformación
+        """
+        type_mapping = {
+            'fn_transform_DateMagic': 'date',
+            'fn_transform_DatetimeMagic': 'timestamp',
+            'fn_transform_Datetime': 'timestamp',
+            'fn_transform_Integer': 'integer',
+            'fn_transform_Double': 'double',
+            'fn_transform_Numeric': 'double',
+            'fn_transform_Boolean': 'boolean',
+            'fn_transform_PeriodMagic': 'string',
+            'fn_transform_ByteMagic': 'string',
+            'fn_transform_ClearString': 'string',
+            'fn_transform_Concatenate': 'string',
+            'fn_transform_Concatenate_ws': 'string',
+            'fn_transform_Date_to_String': 'string',
+            'fn_transform_Case': 'string',
+            'fn_transform_Case_with_default': 'string',
+        }
+        return type_mapping.get(function_name, 'string')
+
+    def _apply_transformation_function(self, function_name: str, params: List, data_type: str):
+        """
+        Aplica la función de transformación con parámetros ya procesados
+        Los params pueden ser expresiones de PySpark o strings literales
+        """
         if function_name == 'fn_transform_Concatenate':
-            columns_to_concat = [col(p.strip()) for p in param_list]
-            return concat_ws("|", *[coalesce(trim(c), lit("")) for c in columns_to_concat])
-        
-        elif function_name == 'fn_transform_Concatenate_ws':
-            if len(param_list) < 2:
-                raise TransformationException("fn_transform_Concatenate_ws", "Requiere al menos 2 parámetros")
-            separator = param_list[-1]
-            columns_to_concat = [col(p.strip()) for p in param_list[:-1]]
-            return concat_ws(separator, *[coalesce(trim(c), lit("")) for c in columns_to_concat])
-        
-        elif function_name == 'fn_transform_Integer':
-            if not param_list:
-                raise TransformationException("fn_transform_Integer", "Requiere nombre de columna")
-            origin_column = param_list[0]
+            # Convertir strings a lit() si es necesario
+            spark_params = []
+            for p in params:
+                if isinstance(p, str):
+                    spark_params.append(lit(p))
+                else:
+                    spark_params.append(p)
             
-            # Versión ultra-simple
-            return coalesce(
-                col(origin_column).cast(IntegerType()),
-                lit(None).cast(IntegerType())
-            )
-
-        elif function_name == 'fn_transform_Double':
-            if not param_list:
-                raise TransformationException("fn_transform_Double", "Requiere nombre de columna")
-            origin_column = param_list[0]
-            
-            # Versión ultra-simple
-            return coalesce(
-                col(origin_column).cast(DoubleType()),
-                lit(None).cast(DoubleType())
-            )
-
-        elif function_name == 'fn_transform_Numeric':
-            if not param_list:
-                raise TransformationException("fn_transform_Numeric", "Requiere nombre de columna")
-            origin_column = param_list[0]
-            
-            decimal_type = self._parse_decimal_type(data_type)
-            
-            # Versión ultra-simple
-            return coalesce(
-                col(origin_column).cast(decimal_type),
-                lit(None).cast(decimal_type)
-            )
-
-        elif function_name == 'fn_transform_Boolean':
-            if not param_list:
-                raise TransformationException("fn_transform_Boolean", "Requiere nombre de columna")
-            origin_column = param_list[0]
-            
-            # Versión ultra-simple usando coalesce como los demás
-            return coalesce(
-                col(origin_column).cast(BooleanType()),
-                lit(None).cast(BooleanType())
-            )
+            return concat_ws("|", *[coalesce(
+                when(p.isNull(), lit("")).otherwise(
+                    when(trim(p.cast(StringType())) == "", lit("")).otherwise(trim(p.cast(StringType())))
+                ) if hasattr(p, 'isNull') else lit(str(p)), 
+                lit("")
+            ) for p in spark_params])
         
         elif function_name == 'fn_transform_ClearString':
-            origin_column = param_list[0] if param_list else None
-            if not origin_column:
+            if not params:
                 raise TransformationException("fn_transform_ClearString", "Requiere nombre de columna")
+            origin_param = params[0]
             
-            if len(param_list) > 1:
-                default = param_list[1]
-                # Si el default empieza con $, es un literal
-                if default.startswith('$'):
-                    default_expr = lit(default[1:])  # Remover el $
-                else:
+            if isinstance(origin_param, str):
+                origin_param = col(origin_param)
+            
+            if len(params) > 1:
+                default = params[1]
+                if isinstance(default, str) and default.startswith('$'):
+                    default_expr = lit(default[1:])
+                elif isinstance(default, str):
                     default_expr = col(default)
+                else:
+                    default_expr = default
                 
                 return when(
-                    col(origin_column).isNull() | 
-                    (trim(col(origin_column)) == "") |
-                    (trim(col(origin_column)).isin(["None", "NULL", "null"])),  # MÁS CASOS
+                    origin_param.isNull() | 
+                    (trim(origin_param) == "") |
+                    (trim(origin_param).isin(["None", "NULL", "null"])),
                     default_expr
-                ).otherwise(trim(col(origin_column)))
+                ).otherwise(trim(origin_param))
             else:
-                # Sin valor por defecto - devolver NULL real para valores vacíos/nulos
                 return when(
-                    col(origin_column).isNull() |
-                    (trim(col(origin_column)) == "") |
-                    (trim(col(origin_column)).isin(["None", "NULL", "null"])),  # MÁS CASOS
+                    origin_param.isNull() |
+                    (trim(origin_param) == "") |
+                    (trim(origin_param).isin(["None", "NULL", "null"])),
                     lit(None).cast(StringType())
-                ).otherwise(
-                    trim(col(origin_column))
-                )
+                ).otherwise(trim(origin_param))
         
-        elif function_name in ['fn_transform_DateMagic', 'fn_transform_DatetimeMagic']:
-            if len(param_list) < 4:
-                raise TransformationException(function_name, "Requiere 4 parámetros: column, NULL, format, default")
+        elif function_name == 'fn_transform_DateMagic':
+            if len(params) < 2:
+                raise TransformationException("fn_transform_DateMagic", "Requiere al menos 2 parámetros")
             
-            origin_column = param_list[0]
-            null_param = param_list[1]  # Parámetro "NULL" - ignorado
-            date_format_param = param_list[2]
-            value_default = param_list[3]
+            origin_param = params[0]
+            date_format_param = params[1]
+            default_value = params[2] if len(params) > 2 else 'to_null'
             
-            logger.info(f"Procesando fecha - Columna: {origin_column}, Formato: {date_format_param}, Default: {value_default}")
+            # Convertir a expresión si es string
+            if isinstance(origin_param, str):
+                origin_param = col(origin_param)
             
-            # Crear valor por defecto
-            default_date_expr = None
-            if value_default and value_default.upper() != "NULL" and len(value_default.strip()) > 0:
-                try:
-                    default_date_expr = to_timestamp(lit(value_default), date_format_param)
-                except:
-                    default_date_expr = lit(None).cast(TimestampType())
+            # Extraer formato
+            if isinstance(date_format_param, str):
+                date_format_str = date_format_param
             else:
-                default_date_expr = lit(None).cast(TimestampType())
+                date_format_str = 'yyyy-MM-dd'
             
+            # Extraer default
+            if isinstance(default_value, str):
+                if default_value.lower() == 'to_null':
+                    default_value_lit = lit(None).cast(DateType())
+                else:
+                    default_value_lit = lit(default_value)
+            else:
+                default_value_lit = default_value
+            
+            # Crear expresión para fecha desde número mágico
+            # Si el valor cast a entero es > 100000, asumimos que es un número mágico
+            magic_date_expr = date_add(
+                to_date(lit('1900-01-01')), 
+                (origin_param.cast(IntegerType()) - lit(MAGIC_OFFSET))
+            )
+            
+            # Mapeo de formatos
+            format_mapping = {
+                'yyyy-MM-dd': 'yyyy-MM-dd',
+                'yyyyMMdd': 'yyyyMMdd',
+                'dd/MM/yyyy': 'dd/MM/yyyy',
+                'MM/dd/yyyy': 'MM/dd/yyyy'
+            }
+            spark_format = format_mapping.get(date_format_str, 'yyyy-MM-dd')
+            
+            # Estrategia de conversión con múltiples intentos:
+            # 1. Si es número > 100000, es número mágico
+            # 2. Si no, intentar parsear como string con formato
+            # 3. Si falla, usar valor por defecto
             return when(
-                # Caso 1: Valor es NULL
-                col(origin_column).isNull(),
-                default_date_expr
+                origin_param.isNull(),
+                to_date(default_value_lit, 'yyyy-MM-dd') if default_value.lower() != 'to_null' else lit(None).cast(DateType())
             ).when(
-                # Caso 2: Valor es string vacío o solo espacios
-                col(origin_column).cast(StringType()).rlike("^\\s*$"),
-                default_date_expr
-            ).when(
-                # Caso 3: Valor es "None" string
-                col(origin_column).cast(StringType()) == "None",
-                default_date_expr
-            ).when(
-                # Caso 4: Es un número Magic Date válido (rango típico: 700000 - 3500000)
-                col(origin_column).cast(StringType()).rlike("^([7-9]\\d{5}|[1-3]\\d{6})$") & 
-                col(origin_column).cast(IntegerType()).between(700000, 3500000),
-                # Convertir Magic Date a fecha real
-                to_timestamp(
-                    date_format(
-                        date_add(
-                            to_date(lit(BASE_DATE_MAGIC), "yyyy-MM-dd"), 
-                            col(origin_column).cast(IntegerType()) - lit(MAGIC_OFFSET)
-                        ), 
-                        date_format_param
-                    ), 
-                    date_format_param
-                )
-            ).when(
-                # Caso 5: Ya es una fecha en formato string (YYYY-MM-DD o similar)
-                col(origin_column).cast(StringType()).rlike("^\\d{4}-\\d{2}-\\d{2}"),
-                to_timestamp(col(origin_column).cast(StringType()), date_format_param)
-            ).when(
-                # Caso 6: Es timestamp ya formateado (con hora)
-                col(origin_column).cast(StringType()).rlike("^\\d{4}-\\d{2}-\\d{2}\\s+\\d{2}:\\d{2}:\\d{2}"),
-                to_timestamp(col(origin_column).cast(StringType()), date_format_param)
+                # Detectar número mágico: es numérico y mayor a 100000
+                origin_param.cast(IntegerType()).isNotNull() & (origin_param.cast(IntegerType()) > lit(100000)),
+                magic_date_expr
             ).otherwise(
+                # Intentar parsear como fecha con formato
+                coalesce(
+                    to_date(origin_param.cast(StringType()), spark_format),
+                    to_date(default_value_lit, 'yyyy-MM-dd') if default_value.lower() != 'to_null' else lit(None).cast(DateType())
+                )
+            )
+        
+        elif function_name == 'fn_transform_Concatenate_ws':
+            if len(params) < 2:
+                raise TransformationException("fn_transform_Concatenate_ws", "Requiere al menos 2 parámetros")
+            
+            separator = params[-1] if isinstance(params[-1], str) else "|"
+            columns_to_concat = params[:-1]
+            
+            spark_params = []
+            for p in columns_to_concat:
+                if isinstance(p, str):
+                    spark_params.append(col(p))
+                else:
+                    spark_params.append(p)
+            
+            return concat_ws(separator, *[coalesce(trim(c.cast(StringType())), lit("")) for c in spark_params])
+        
+        elif function_name in ['fn_transform_Integer', 'fn_transform_Double', 'fn_transform_Numeric', 'fn_transform_Boolean']:
+            if not params:
+                raise TransformationException(function_name, "Requiere nombre de columna")
+            
+            origin_param = params[0]
+            if isinstance(origin_param, str):
+                origin_param = col(origin_param)
+            
+            type_map = {
+                'fn_transform_Integer': IntegerType(),
+                'fn_transform_Double': DoubleType(),
+                'fn_transform_Boolean': BooleanType()
+            }
+            
+            if function_name == 'fn_transform_Numeric':
+                target_type = self._parse_decimal_type(data_type)
+            else:
+                target_type = type_map[function_name]
+            
+            return coalesce(origin_param.cast(target_type), lit(None).cast(target_type))
+        
+        elif function_name == 'fn_transform_Datetime':
+            if not params:
+                return current_timestamp()
+            origin_param = params[0] if not isinstance(params[0], str) else col(params[0])
+            return coalesce(to_timestamp(origin_param), lit(None).cast(TimestampType()))
+        
+        elif function_name == 'fn_transform_DatetimeMagic':
+            """
+            Convierte fechas y horas mágicas (números de Visual FoxPro) a timestamp
+            Params: [date_column, time_column, format, default_value (opcional)]
+            
+            Ejemplos de valores origen:
+            - date_column: "739062" (número mágico) o "2024-06-25" (string)
+            - time_column: "070000" (HHMMSS como número o string)
+            - format: "yyyy-MM-dd HH:mm:ss"
+            - default_value: "to_null" (opcional, por defecto retorna null)
+            """
+            if len(params) < 3:
+                raise TransformationException("fn_transform_DatetimeMagic", "Requiere al menos 3 parámetros")
+            
+            date_param = params[0]
+            time_param = params[1]
+            format_param = params[2] if isinstance(params[2], str) else 'yyyy-MM-dd HH:mm:ss'
+            default_value = params[3] if len(params) > 3 else 'to_null'
+            
+            # Convertir a expresiones si son strings
+            if isinstance(date_param, str):
+                date_param = col(date_param)
+            if isinstance(time_param, str):
+                time_param = col(time_param)
+            
+            # ============================================================
+            # PASO 1: Convertir date_param a fecha (puede ser número mágico o string)
+            # ============================================================
+            
+            # Detectar si es número mágico: valor numérico > 100000
+            date_from_magic = date_add(
+                to_date(lit('1900-01-01')), 
+                (date_param.cast(IntegerType()) - lit(MAGIC_OFFSET))
+            )
+            
+            # Intentar parsear como string con formato
+            date_from_string = to_date(date_param.cast(StringType()), 'yyyy-MM-dd')
+            
+            # Estrategia: si es número > 100000, usar conversión mágica; sino, parsear como string
+            converted_date = when(
+                date_param.isNull(),
+                lit(None).cast(DateType())
+            ).when(
+                # Es número mágico
+                date_param.cast(IntegerType()).isNotNull() & (date_param.cast(IntegerType()) > lit(100000)),
+                date_from_magic
+            ).otherwise(
+                # Es string de fecha
+                date_from_string
+            )
+            
+            # ============================================================
+            # PASO 2: Convertir time_param a formato HH:mm:ss
+            # ============================================================
+            
+            # El time_param puede venir como:
+            # - "070000" (string HHMMSS)
+            # - 70000 (número HHMMSS)
+            # - "07:00:00" (ya formateado)
+            
+            # Normalizar a 6 dígitos con padding de ceros a la izquierda
+            time_normalized = lpad(time_param.cast(StringType()), 6, '0')
+            
+            # Extraer HH, MM, SS
+            hours = substring(time_normalized, 1, 2)
+            minutes = substring(time_normalized, 3, 2)
+            seconds = substring(time_normalized, 5, 2)
+            
+            # Construir string de tiempo en formato HH:mm:ss
+            time_string = concat_ws(':', hours, minutes, seconds)
+            
+            # ============================================================
+            # PASO 3: Combinar fecha y hora en timestamp
+            # ============================================================
+            
+            # Concatenar fecha (como string) + espacio + hora
+            datetime_string = concat(
+                converted_date.cast(StringType()),
+                lit(' '),
+                time_string
+            )
+            
+            # Convertir a timestamp
+            result_timestamp = to_timestamp(datetime_string, 'yyyy-MM-dd HH:mm:ss')
+            
+            # ============================================================
+            # PASO 4: Aplicar valor por defecto si es nulo
+            # ============================================================
+            
+            # Si default_value es 'to_null', retornar null; sino, usar el valor especificado
+            if isinstance(default_value, str) and default_value.lower() == 'to_null':
+                return coalesce(
+                    result_timestamp,
+                    lit(None).cast(TimestampType())
+                )
                 # Caso por defecto: no se puede convertir, usar default
                 default_date_expr
             )
@@ -478,6 +1116,206 @@ class TransformationEngine:
                 except:
                     default_expr = lit(None).cast(DateType())
             else:
+                # Usar el valor por defecto especificado
+                return coalesce(
+                    result_timestamp,
+                    to_timestamp(lit(default_value), 'yyyy-MM-dd HH:mm:ss')
+                )
+        
+        elif function_name == 'fn_transform_Date_to_String':
+            if len(params) < 2:
+                raise TransformationException("fn_transform_Date_to_String", "Requiere 2 parámetros")
+            
+            date_param = params[0]
+            format_param = params[1] if isinstance(params[1], str) else 'yyyyMM'
+            
+            # Si es string, convertir a columna y luego a Date
+            if isinstance(date_param, str):
+                # Es un string: debe ser nombre de columna (las funciones anidadas ya se procesaron antes)
+                if date_param in df.columns:
+                    date_param = to_date(col(date_param))
+                else:
+                    # Si no es una columna, intentar como fecha literal
+                    date_param = to_date(lit(date_param))
+            # Si NO es string, entonces ya es una expresión de Spark (viene de función anidada)
+            # y simplemente la usamos directamente - NO necesita conversión adicional
+            
+            return date_format(date_param, format_param)
+        
+        elif function_name == 'fn_transform_PeriodMagic':
+            """
+            Crea un período en formato YYYYMM combinando ejercicio y periodo
+            Params: [period_column, ejercicio_column]
+            Ejemplo: fn_transform_PeriodMagic(mescuota,anyocuota) -> '202501'
+            """
+            if len(params) < 2:
+                raise TransformationException("fn_transform_PeriodMagic", "Requiere 2 parámetros: period, ejercicio")
+            
+            period_param = params[0]
+            ejercicio_param = params[1]
+            
+            # Convertir a columnas si son strings
+            if isinstance(period_param, str):
+                period_param = col(period_param)
+            if isinstance(ejercicio_param, str):
+                ejercicio_param = col(ejercicio_param)
+            
+            # Concatenar año + mes con padding
+            return when(
+                period_param.isNull() | ejercicio_param.isNull(),
+                lit('190001')
+            ).otherwise(
+                concat(
+                    ejercicio_param.cast(StringType()), 
+                    lpad(period_param.cast(StringType()), 2, '0')
+                )
+            )
+
+        elif function_name == 'fn_transform_ByteMagic':
+            """
+            Convierte valores byte/binarios a 'T' o 'F'
+            Params: [origin_column, default_value]
+            Valores: 0x46='F', 0x54='T', o ya convertidos 'F'/'T'
+            """
+            if len(params) < 1:
+                raise TransformationException("fn_transform_ByteMagic", "Requiere al menos 1 parámetro")
+            
+            origin_param = params[0]
+            default_value = params[1] if len(params) > 1 else '$F'
+            
+            # Convertir a columna si es string
+            if isinstance(origin_param, str):
+                origin_param = col(origin_param)
+            
+            # Extraer el valor por defecto
+            if isinstance(default_value, str) and default_value.startswith('$'):
+                default_lit = lit(default_value[1:])
+            elif isinstance(default_value, str):
+                default_lit = col(default_value)
+            else:
+                default_lit = default_value
+            
+            # Crear la expresión de conversión
+            # Maneja múltiples formatos: bytes binarios, hex string, o ya convertido
+            return when(origin_param.isNull(), default_lit) \
+                .when(origin_param == lit('T'), lit('T')) \
+                .when(origin_param == lit('F'), lit('F')) \
+                .when(origin_param.cast(StringType()) == '0x54', lit('T')) \
+                .when(origin_param.cast(StringType()) == '0x46', lit('F')) \
+                .when(origin_param == lit(84), lit('T')) \
+                .when(origin_param == lit(70), lit('F')) \
+                .otherwise(default_lit)
+
+        elif function_name == 'fn_transform_Case':
+            """
+            Aplica transformación de casos sin valor por defecto
+            Params: [origin_column, rule1, rule2, ...]
+            Formato de reglas: 'value1|value2->label'
+            Ejemplo: fn_transform_Case(estado, 001|002->Activo, 003->Inactivo)
+            """
+            if len(params) < 2:
+                raise TransformationException("fn_transform_Case", "Requiere al menos 2 parámetros")
+            
+            origin_param = params[0]
+            rules = params[1:]
+            
+            # Convertir a columna si es string
+            if isinstance(origin_param, str):
+                origin_param = col(origin_param)
+            
+            # Construir la expresión de casos
+            case_expr = origin_param  # valor original por defecto
+            
+            for rule in rules:
+                if isinstance(rule, str) and '->' in rule:
+                    value_case, label_case = rule.split('->')
+                    values_to_change = [v.strip() for v in value_case.split('|')]
+                    
+                    # Aplicar el when para estos valores
+                    case_expr = when(
+                        origin_param.isin(values_to_change), 
+                        lit(label_case.strip())
+                    ).otherwise(case_expr)
+            
+            return case_expr
+
+        elif function_name == 'fn_transform_Case_with_default':
+            """
+            Aplica transformación de casos CON valor por defecto
+            Params: [origin_column, rule1, rule2, ..., default_value]
+            Formato de reglas: 'value1|value2->label' o 'value1&value2->label' (para múltiples columnas)
+            Ejemplo: fn_transform_Case_with_default(linea&familia, 03&003->T, $F)
+            """
+            if len(params) < 2:
+                raise TransformationException("fn_transform_Case_with_default", "Requiere al menos 2 parámetros")
+            
+            origin_param = params[0]
+            default_value = params[-1]
+            rules = params[1:-1] if len(params) > 2 else []
+            
+            # Extraer el valor por defecto
+            if isinstance(default_value, str) and default_value.startswith('$'):
+                default_expr = lit(default_value[1:])
+            elif isinstance(default_value, str):
+                default_expr = col(default_value)
+            else:
+                default_expr = default_value
+            
+            # Inicializar con el valor por defecto
+            case_expr = default_expr
+            
+            # Verificar si origin_param tiene múltiples columnas (con &)
+            if isinstance(origin_param, str) and '&' in origin_param:
+                # Caso especial: múltiples columnas
+                conditions = [c.strip() for c in origin_param.split('&')]
+                
+                for rule in rules:
+                    if isinstance(rule, str) and '->' in rule:
+                        value_case, label_case = rule.split('->')
+                        values_to_change = [v.strip() for v in value_case.split('|')]
+                        
+                        # Construir condición compuesta para cada valor
+                        combined_condition = None
+                        
+                        for value in values_to_change:
+                            value_separated = value.split('&')
+                            
+                            # Crear condición para este conjunto de valores
+                            sub_condition = None
+                            for i, col_name in enumerate(conditions):
+                                if i < len(value_separated):
+                                    if sub_condition is None:
+                                        sub_condition = (col(col_name) == lit(value_separated[i].strip()))
+                                    else:
+                                        sub_condition = sub_condition & (col(col_name) == lit(value_separated[i].strip()))
+                            
+                            # Combinar con OR
+                            if combined_condition is None:
+                                combined_condition = sub_condition
+                            else:
+                                combined_condition = combined_condition | sub_condition
+                        
+                        # Aplicar la regla
+                        if combined_condition is not None:
+                            case_expr = when(combined_condition, lit(label_case.strip())).otherwise(case_expr)
+            
+            else:
+                # Caso simple: una sola columna
+                if isinstance(origin_param, str):
+                    origin_param = col(origin_param)
+                
+                for rule in rules:
+                    if isinstance(rule, str) and '->' in rule:
+                        value_case, label_case = rule.split('->')
+                        values_to_change = [v.strip() for v in value_case.split('|')]
+                        
+                        case_expr = when(
+                            origin_param.isin(values_to_change), 
+                            lit(label_case.strip())
+                        ).otherwise(case_expr)
+            
+            return case_expr
+        
                 # Si especifica NULL o no hay default, usar null
                 default_expr = lit(None).cast(DateType())
             
@@ -498,25 +1336,45 @@ class TransformationEngine:
         else:
             raise TransformationException(function_name, f"Función no soportada: {function_name}")
     
-    def _parse_decimal_type(self, data_type: str) -> DecimalType:
-        """Parsea tipo decimal desde string"""
-        if isinstance(data_type, str) and "numeric" in data_type.lower():
-            match = re.search(r'numeric\((\d+),(\d+)\)', data_type.lower())
-            if match:
-                precision = int(match.group(1))
-                scale = int(match.group(2))
-                return DecimalType(precision, scale)
-        return DecimalType(38, 12)  # Default
-
+    def _get_spark_type(self, data_type: str):
+        """Convierte string de tipo a tipo Spark"""
+        type_mapping = {
+            'string': StringType(),
+            'int': IntegerType(),
+            'integer': IntegerType(),
+            'double': DoubleType(),
+            'float': DoubleType(),
+            'boolean': BooleanType(),
+            'timestamp': TimestampType(),
+            'date': DateType()
+        }
+        
+        if 'numeric' in data_type.lower():
+            return self._parse_decimal_type(data_type)
+        
+        return type_mapping.get(data_type.lower(), StringType())
+    
+    def _parse_decimal_type(self, data_type: str):
+        """Parse decimal type from string like 'numeric(13,2)'"""
+        import re
+        match = re.search(r'numeric\((\d+),(\d+)\)', data_type.lower())
+        if match:
+            precision = int(match.group(1))
+            scale = int(match.group(2))
+            return DecimalType(precision, scale)
+        return DecimalType(18, 2)
+    
 class DeltaTableManager:
     """Maneja operaciones con tablas Delta"""
     
     def __init__(self, spark_session):
         self.spark = spark_session
+        self.logger = DataLakeLogger.get_logger(__name__)
     
     def write_delta_table(self, df, s3_path: str, partition_columns: List[str], 
                          mode: str = "overwrite") -> None:
         """Escribe DataFrame a tabla Delta con optimizaciones válidas"""
+        df.show()
         writer = df.write.format("delta").mode(mode)
         
         if partition_columns:
@@ -559,41 +1417,59 @@ class DeltaTableManager:
             delta_table.generate("symlink_format_manifest")
             
         except Exception as e:
-            logger.warning(f"Error optimizando tabla Delta en {s3_path}: {str(e)}")
+            self.logger.warning(f"Error optimizando tabla Delta en {s3_path}: {str(e)}")
 
 class DataProcessor:
-    """Procesador principal de datos optimizado"""
+    """Procesador principal de datos optimizado con logging integrado"""
     
-    def __init__(self, spark_session, config_manager, transformation_engine, delta_manager):
+    def __init__(self, spark_session, config_manager, transformation_engine, delta_manager, logger, dynamo_logger):
         self.spark = spark_session
         self.config_manager = config_manager
         self.transformation_engine = transformation_engine
         self.delta_manager = delta_manager
+        self.logger = logger
+        self.dynamo_logger = dynamo_logger
         self.now_lima = dt.datetime.now(pytz.utc).astimezone(TZ_LIMA)
     
     def process_table(self, args: Dict[str, str]) -> None:
-        """Procesa una tabla completa"""
+        """Procesa una tabla completa con logging detallado"""
+        table_name = args['TABLE_NAME']
+        
         try:
+            self.logger.info(f"🔄 Cargando configuraciones table {table_name}")
+            
             # Cargar configuraciones
             table_config, endpoint_config, columns_metadata = self._load_configurations(args)
             
-            logger.info(f"Procesando tabla {args['TABLE_NAME']} con {len(columns_metadata)} columnas")
-            for col_meta in columns_metadata[:5]:  # Log primeras 5 columnas
-                logger.info(f"  Columna: {col_meta.name}, Transformación: {col_meta.transformation}")
+            self.logger.info(f"📋 Configuraciones cargadas table {table_name} columns_count {len(columns_metadata)}")
             
             # Construir rutas S3
             s3_paths = self._build_s3_paths(args, table_config)
-            logger.info(f"Leyendo desde: {s3_paths['raw']}")
-            logger.info(f"Escribiendo a: {s3_paths['stage']}")
+            self.logger.info(f"📂 Rutas S3 configuradas raw_path: {s3_paths['raw']} stage_path {s3_paths['stage']}")
             
             # Leer datos source
             source_df = self._read_source_data(s3_paths['raw'])
             
             if source_df.count() == 0:
-                self._handle_empty_data(s3_paths['stage'], columns_metadata)
+                self.logger.warning(f"⚠️ No se encontraron datos para procesar table: {table_name}")
+                
+                if not DeltaTable.isDeltaTable(self.spark, s3_paths['stage']):
+                    # Crear DataFrame vacío con esquema
+                    empty_df = self._create_empty_dataframe(columns_metadata)
+                    partition_columns = [col.name for col in columns_metadata if col.is_partition]
+                    self.delta_manager.write_delta_table(empty_df, s3_paths['stage'], partition_columns)
+                
+                self.dynamo_logger.log_warning(
+                    table_name=table_name,
+                    warning_message="No data detected to migrate",
+                    job_name=args['JOB_NAME'],
+                    context={"empty_data_handled": True}
+                )
+                self.logger.info(f"✅ Proceso completado - tabla vacía manejada correctamente")    
                 return
             
-            logger.info(f"Datos fuente leídos: {source_df.count()} filas")
+            records_count = source_df.count()
+            self.logger.info(f"📊 Datos fuente leídos table: {table_name} records_count: {records_count}")
             
             # Aplicar transformaciones
             transformed_df, transformation_errors = self.transformation_engine.apply_transformations(
@@ -601,26 +1477,34 @@ class DataProcessor:
             )
             
             if transformation_errors:
-                logger.warning(f"Errores de transformación: {len(transformation_errors)}")
-                for error in transformation_errors:
-                    logger.warning(f"  {error}")
+                self.logger.warning(f"⚠️ Errores de transformación detectados table: {table_name} errors_count: {len(transformation_errors)} errors: {transformation_errors[:3]}")
             
-            # Aplicar post-procesamiento (deduplicación, ordenamiento)
+            # Post-procesamiento y escritura
             final_df = self._apply_post_processing(transformed_df, columns_metadata)
+            final_count = final_df.count()
             
-            logger.info(f"Datos transformados: {final_df.count()} filas")
+            self.logger.info(f"🔄 Escribiendo datos transformados table: {table_name} final_records_count: {final_count}")
             
-            # Escribir a stage
             self._write_to_stage(final_df, s3_paths['stage'], table_config, columns_metadata)
             
             # Optimizar tabla Delta
             self.delta_manager.optimize_delta_table(s3_paths['stage'])
+            self.logger.info(f"🎯 Tabla Delta optimizada table: {table_name}")
             
-            # Log de éxito
-            self._log_success(args, table_config, endpoint_config, transformation_errors)
+            # Registrar éxito
+            self.dynamo_logger.log_success(
+                table_name=table_name,
+                job_name=args['JOB_NAME'],
+                context={
+                    "end_time": dt.datetime.now().isoformat(),
+                    "records_processed": final_count,
+                    "transformation_errors_count": len(transformation_errors),
+                    "output_format": "delta"
+                }
+            )
             
         except Exception as e:
-            self._log_error(args, str(e))
+            # Dejar que la excepción se propague para ser manejada en main()
             raise
     
     def _load_configurations(self, args: Dict[str, str]) -> Tuple[TableConfig, EndpointConfig, List[ColumnMetadata]]:
@@ -713,7 +1597,7 @@ class DataProcessor:
             df.cache()  # Cache para optimizar múltiples operaciones
             return df
         except Exception as e:
-            logger.error(f"Error leyendo datos desde {s3_raw_path}: {str(e)}")
+            self.logger.error(f"Error leyendo datos desde {s3_raw_path}: {str(e)}")
             # Retornar DataFrame vacío en caso de error
             return self.spark.createDataFrame([], StructType([]))
     
@@ -740,6 +1624,21 @@ class DataProcessor:
         """Escribe datos a stage"""
         partition_columns = [col.name for col in columns_metadata if col.is_partition]
         
+        # 👇 AGREGAR ESTE LOGGING
+        self.logger.info(f"🔍 DEBUG _write_to_stage - partitions: {partition_columns}")
+        self.logger.info(f"🔍 DEBUG _write_to_stage - s3_path: {s3_stage_path}")
+        self.logger.info(f"🔍 DEBUG _write_to_stage - schema: {df.schema}")
+        self.logger.info(f"🔍 DEBUG _write_to_stage - load_type: {table_config.load_type}")
+
+        # Verificar que el DataFrame no esté vacío antes de escribir
+        count = df.count()
+        self.logger.info(f"🔍 DEBUG _write_to_stage - df.count: {count}")
+        if count == 0:
+            self.logger.warning(f"⚠️ DataFrame vacío, creando tabla vacía")
+            empty_df = self._create_empty_dataframe(columns_metadata)
+            self.delta_manager.write_delta_table(empty_df, s3_stage_path, partition_columns, "overwrite")
+            return
+        
         if DeltaTable.isDeltaTable(self.spark, s3_stage_path):
             if table_config.load_type in ['incremental', 'between-date']:
                 # Merge incremental
@@ -752,17 +1651,7 @@ class DataProcessor:
         else:
             # Crear nueva tabla
             self.delta_manager.write_delta_table(df, s3_stage_path, partition_columns, "overwrite")
-    
-    def _handle_empty_data(self, s3_stage_path: str, columns_metadata: List[ColumnMetadata]):
-        """Maneja datos vacíos"""
-        if not DeltaTable.isDeltaTable(self.spark, s3_stage_path):
-            # Crear DataFrame vacío con esquema
-            empty_df = self._create_empty_dataframe(columns_metadata)
-            partition_columns = [col.name for col in columns_metadata if col.is_partition]
-            self.delta_manager.write_delta_table(empty_df, s3_stage_path, partition_columns)
-        
-        raise Exception("No data detected to migrate")
-    
+     
     def _create_empty_dataframe(self, columns_metadata: List[ColumnMetadata]):
         """Crea DataFrame vacío con esquema"""
         fields = []
@@ -772,62 +1661,146 @@ class DataProcessor:
         
         schema = StructType(fields)
         return self.spark.createDataFrame([], schema)
+
+def setup_logging(table_name: str, team: str, data_source: str):
+    """
+    Setup DataLakeLogger configuration - siguiendo estándar EXACTO de extract_data_v2
     
-    def _log_success(self, args: Dict[str, str], table_config: TableConfig, endpoint_config: EndpointConfig, errors: List[str]):
-        """Log de éxito"""
-        success_msg = f"Procesamiento exitoso para tabla {args['TABLE_NAME']}"
-        if errors:
-            success_msg += f" con {len(errors)} advertencias de transformación"
-        logger.info(success_msg)
-        # Implementar logging a DynamoDB si es necesario
-        pass
-    
-    def _log_error(self, args: Dict[str, str], error_message: str):
-        """Log de error"""
-        logger.error(f"Error procesando tabla {args['TABLE_NAME']}: {error_message}")
-        # Implementar logging a DynamoDB y SNS si es necesario
-        pass
+    Args:
+        table_name: Nombre de la tabla a procesar
+        team: Equipo propietario
+        data_source: Fuente de datos
+    """
+    DataLakeLogger.configure_global(
+        log_level=logging.INFO,
+        service_name="light_transform",
+        correlation_id=f"{team}-{data_source}-light_transform-{table_name}",
+        owner=team,
+        auto_detect_env=True,
+        force_local_mode=False
+    )
 
 def main():
-    """Función principal optimizada"""
-    # Obtener argumentos
-    args = getResolvedOptions(
-        sys.argv, 
-        ['JOB_NAME', 'S3_RAW_BUCKET', 'S3_STAGE_BUCKET', 'DYNAMO_LOGS_TABLE', 
-         'TABLE_NAME', 'ARN_TOPIC_FAILED', 'PROJECT_NAME', 'TEAM', 'DATA_SOURCE', 
-         'TABLES_CSV_S3', 'CREDENTIALS_CSV_S3', 'COLUMNS_CSV_S3', 'ENDPOINT_NAME', 'ENVIRONMENT']
-    )
+    """Función principal optimizada con logging integrado"""
+    logger = None
+    monitor = None
+    dynamo_logger = None
+    process_id = None
+    process_guid = str(uuid.uuid4())
     
-    # Configurar Spark con optimizaciones válidas
-    spark = SparkSession.builder \
-        .config("spark.sql.extensions", "io.delta.sql.DeltaSparkSessionExtension") \
-        .config("spark.sql.catalog.spark_catalog", "org.apache.spark.sql.delta.catalog.DeltaCatalog") \
-        .config("spark.databricks.delta.retentionDurationCheck.enabled", "false") \
-        .config("spark.databricks.delta.schema.autoMerge.enabled", "true") \
-        .config("spark.sql.adaptive.enabled", "true") \
-        .config("spark.sql.adaptive.coalescePartitions.enabled", "true") \
-        .config("spark.sql.adaptive.skewJoin.enabled", "true") \
-        .config("spark.sql.adaptive.localShuffleReader.enabled", "true") \
-        .config("spark.serializer", "org.apache.spark.serializer.KryoSerializer") \
-        .config("spark.sql.parquet.datetimeRebaseModeInRead", "CORRECTED") \
-        .config("spark.sql.parquet.datetimeRebaseModeInWrite", "LEGACY") \
-        .config("spark.sql.legacy.timeParserPolicy", "LEGACY") \
-        .config("spark.sql.parquet.int96RebaseModeInWrite", "CORRECTED") \
-        .getOrCreate()
-    
-    # Configurar sistema de archivos S3
-    spark.sparkContext._jsc.hadoopConfiguration().set("fs.s3.impl", "org.apache.hadoop.fs.s3a.S3AFileSystem")
-    spark.sparkContext._jsc.hadoopConfiguration().set("mapreduce.fileoutputcommitter.marksuccessfuljobs", "false")
-    
-    # Inicializar componentes
-    s3_client = boto3.client('s3')
-    config_manager = ConfigurationManager(s3_client)
-    transformation_engine = TransformationEngine(spark)
-    delta_manager = DeltaTableManager(spark)
-    
-    # Procesar tabla
-    processor = DataProcessor(spark, config_manager, transformation_engine, delta_manager)
-    processor.process_table(args)
+    try:
+        # Obtener argumentos de Glue
+        args = getResolvedOptions(
+            sys.argv, 
+            ['JOB_NAME', 'S3_RAW_BUCKET', 'S3_STAGE_BUCKET', 'DYNAMO_LOGS_TABLE', 
+             'TABLE_NAME', 'ARN_TOPIC_FAILED', 'PROJECT_NAME', 'TEAM', 'DATA_SOURCE', 
+             'TABLES_CSV_S3', 'CREDENTIALS_CSV_S3', 'COLUMNS_CSV_S3', 'ENDPOINT_NAME', 'ENVIRONMENT']
+        )
+        
+        # Configurar DataLakeLogger globalmente
+        setup_logging(
+            table_name=args['TABLE_NAME'],
+            team=args.get('TEAM'),
+            data_source=args.get('DATA_SOURCE')
+        )
+        
+        # Obtener logger principal
+        logger = DataLakeLogger.get_logger(__name__)
+        
+        logger.info(f"🆔 Process GUID generado: {process_guid}")
+
+        # Configurar DynamoDB Logger
+        dynamo_logger = DynamoDBLogger(
+            table_name=args.get("DYNAMO_LOGS_TABLE"),
+            sns_topic_arn=args.get("ARN_TOPIC_FAILED"),
+            team=args.get("TEAM"),
+            data_source=args.get("DATA_SOURCE"),
+            endpoint_name=args.get("ENDPOINT_NAME"),
+            flow_name="light_transform",
+            environment=args.get("ENVIRONMENT"),
+            logger_name=f"{args.get('TEAM')}-transform-dynamo",
+            process_guid=process_guid
+        )
+        
+        monitor = Monitor(dynamo_logger)
+
+        process_id = monitor.log_start(
+            table_name=args['TABLE_NAME'],
+            job_name=args['JOB_NAME'],
+            context={
+                "start_time": dt.datetime.now().isoformat(),
+                "environment": args.get('ENVIRONMENT'),
+                "team": args.get('TEAM'),
+                "data_source": args.get('DATA_SOURCE'),
+                "endpoint_name": args.get('ENDPOINT_NAME'),
+                "process_guid": process_guid  # 👈 endpoint en contexto
+            }
+        )
+
+        logger.info(f"🚀 Iniciando Light Transform table: {args['TABLE_NAME']} job: {args['JOB_NAME']} team: {args['TEAM']} data_source: {args['DATA_SOURCE']} endpoint: {args.get('ENDPOINT_NAME')} process_id: {process_id}")
+        
+        # Configurar Spark con optimizaciones válidas
+        spark = SparkSession.builder \
+            .config("spark.sql.extensions", "io.delta.sql.DeltaSparkSessionExtension") \
+            .config("spark.sql.catalog.spark_catalog", "org.apache.spark.sql.delta.catalog.DeltaCatalog") \
+            .config("spark.databricks.delta.retentionDurationCheck.enabled", "false") \
+            .config("spark.databricks.delta.schema.autoMerge.enabled", "true") \
+            .config("spark.sql.adaptive.enabled", "true") \
+            .config("spark.sql.adaptive.coalescePartitions.enabled", "true") \
+            .config("spark.sql.adaptive.skewJoin.enabled", "true") \
+            .config("spark.sql.adaptive.localShuffleReader.enabled", "true") \
+            .config("spark.serializer", "org.apache.spark.serializer.KryoSerializer") \
+            .getOrCreate()
+        
+        # Configurar sistema de archivos S3
+        spark.sparkContext._jsc.hadoopConfiguration().set("fs.s3.impl", "org.apache.hadoop.fs.s3a.S3AFileSystem")
+        spark.sparkContext._jsc.hadoopConfiguration().set("mapreduce.fileoutputcommitter.marksuccessfuljobs", "false")
+         
+        # Inicializar componentes
+        s3_client = boto3.client('s3')
+        config_manager = ConfigurationManager(s3_client)
+        transformation_engine = TransformationEngine(spark)
+        delta_manager = DeltaTableManager(spark)
+        
+        # Procesar tabla con logging integrado
+        processor = DataProcessor(
+            spark,
+            config_manager,
+            transformation_engine,
+            delta_manager,
+            logger,
+            dynamo_logger
+        )
+        
+        processor.process_table(args)
+         
+        logger.info(f"✅ Light Transform completado exitosamente table: {args['TABLE_NAME']} process_id: {process_id} process_guid: {process_guid}")
+        
+    except Exception as e:
+        error_msg = str(e)
+        if logger:
+            logger.error(f"❌ Error en Light Transform: {error_msg} table: {args.get('TABLE_NAME', 'unknown')} job: {args.get('JOB_NAME', 'unknown')} error_type: {type(e).__name__} process_guid: {process_guid}")
+        
+        # Registrar error en DynamoDB (esto enviará SNS automáticamente)
+        if dynamo_logger:
+            dynamo_logger.log_failure(
+                table_name=args.get('TABLE_NAME', 'unknown'),
+                error_message=error_msg,
+                job_name=args.get('JOB_NAME', 'unknown'),
+                context={
+                    "error_type": type(e).__name__,
+                    "failed_at": dt.datetime.now().isoformat(),
+                    "process_guid": process_guid
+                }
+            )
+        
+        # El job debe terminar exitosamente para evitar dobles notificaciones
+        if logger:
+            logger.info("ℹ️ Job terminando como SUCCESS para evitar dobles notificaciones")
+        
+    finally:
+        if 'spark' in locals():
+            spark.stop()
 
 if __name__ == "__main__":
     main()

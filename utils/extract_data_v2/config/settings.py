@@ -3,6 +3,18 @@ import os
 import boto3
 from typing import Dict, Any, Optional
 
+# AGREGAR ESTAS LÍNEAS PARA CARGAR EL .env
+try:
+    from dotenv import load_dotenv
+    # Cargar el archivo .env desde el directorio raíz del proyecto
+    env_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), '.env')
+    load_dotenv(env_path)
+    print(f"✅ Loaded .env file from: {env_path}")
+except ImportError:
+    print("⚠️ python-dotenv not installed. Install with: pip install python-dotenv")
+except Exception as e:
+    print(f"⚠️ Could not load .env file: {e}")
+
 class Settings:
     """Central configuration management"""
     
@@ -106,35 +118,59 @@ class Settings:
     
     def _load_local_config(self) -> Dict[str, Any]:
         """Load configuration for local development"""
+        
+        # Verificar que todas las variables críticas estén presentes
+        required_vars = ['MAX_THREADS', 'CHUNK_SIZE', 'PROJECT_NAME', 'TEAM', 'DATA_SOURCE']
+        missing_vars = []
+        
+        for var in required_vars:
+            if os.getenv(var) is None:
+                missing_vars.append(var)
+        
+        if missing_vars:
+            raise ValueError(f"Missing required environment variables: {missing_vars}. Check your .env file.")
+        
         return {
-            'S3_RAW_BUCKET': os.getenv('S3_RAW_BUCKET', 'sofia-dev-datalake-509399624591-us-east-1-raw-s3'),
-            'PROJECT_NAME': os.getenv('PROJECT_NAME', 'datalake'),
-            'TEAM': os.getenv('TEAM', 'genesis'),
-            'DATA_SOURCE': os.getenv('DATA_SOURCE', 'upeu'),
-            'ENVIRONMENT': os.getenv('ENVIRONMENT', 'DEV'),
-            'REGION': os.getenv('REGION', 'us-east-1'),
-            'DYNAMO_LOGS_TABLE': os.getenv('DYNAMO_LOGS_TABLE', 'sofia-dev-datalake-logs-ddb'),
+            'S3_RAW_BUCKET': os.getenv('S3_RAW_BUCKET'),
+            'PROJECT_NAME': os.getenv('PROJECT_NAME'),
+            'TEAM': os.getenv('TEAM'),
+            'DATA_SOURCE': os.getenv('DATA_SOURCE'),
+            'ENVIRONMENT': os.getenv('ENVIRONMENT'),
+            'REGION': os.getenv('REGION'),
+            'DYNAMO_LOGS_TABLE': os.getenv('DYNAMO_LOGS_TABLE'),
             'TABLE_NAME': os.getenv('TABLE_NAME', ''),
-            'TABLES_CSV_S3': os.getenv('TABLES_CSV_S3', '../../artifacts/configuration/csv/tables.csv'),
-            'CREDENTIALS_CSV_S3': os.getenv('CREDENTIALS_CSV_S3', '../../artifacts/configuration/csv/credentials.csv'),
-            'COLUMNS_CSV_S3': os.getenv('COLUMNS_CSV_S3', '../../artifacts/configuration/csv/columns.csv'),
-            'ENDPOINT_NAME': os.getenv('ENDPOINT_NAME', 'PEUPEU'),
-            'TOPIC_ARN': os.getenv('TOPIC_ARN', 'arn:aws:sns:us-east-1:509399624591:sofia-dev-datalake-failed-sns'),
-            'FORCE_FULL_LOAD': os.getenv('FORCE_FULL_LOAD', 'false').lower() == 'true',
-            'MAX_THREADS': int(os.getenv('MAX_THREADS', '6')),
-            'CHUNK_SIZE': int(os.getenv('CHUNK_SIZE', '1000000')),
-            'OUTPUT_FORMAT': os.getenv('OUTPUT_FORMAT', 'parquet'),
-            'EXTRACTOR_TYPE': os.getenv('EXTRACTOR_TYPE', 'sqlserver'),
-            'LOADER_TYPE': os.getenv('LOADER_TYPE', 's3'),
-            'MONITOR_TYPE': os.getenv('MONITOR_TYPE', 'dynamodb'),
-            'AWS_PROFILE': os.getenv('AWS_PROFILE', 'prod-upeu-admin'),
-            'WATERMARK_STORAGE_TYPE': os.getenv('WATERMARK_STORAGE_TYPE', 'dynamodb'),
-            'WATERMARK_TABLE': os.getenv('WATERMARK_TABLE', 'sofia-dev-datalake-watermarks-ddb'),
-            'WATERMARK_CSV_PATH': os.getenv('WATERMARK_CSV_PATH', '../../artifacts/configuration/csv/watermarks.csv'),
-            'WATERMARK_PG_CONNECTION': os.getenv('WATERMARK_PG_CONNECTION', ''),
-            'WATERMARK_PG_SCHEMA': os.getenv('WATERMARK_PG_SCHEMA', 'watermarks')
+            'TABLES_CSV_S3': os.getenv('TABLES_CSV_S3'),
+            'CREDENTIALS_CSV_S3': os.getenv('CREDENTIALS_CSV_S3'),
+            'COLUMNS_CSV_S3': os.getenv('COLUMNS_CSV_S3'),
+            'ENDPOINT_NAME': os.getenv('ENDPOINT_NAME'),
+            'TOPIC_ARN': os.getenv('TOPIC_ARN'),
+            
+            # VALORES CRÍTICOS SIN FALLBACKS - DEBEN ESTAR EN .env
+            'FORCE_FULL_LOAD': os.getenv('FORCE_FULL_LOAD').lower() == 'true',
+            'MAX_THREADS': int(os.getenv('MAX_THREADS')),
+            'CHUNK_SIZE': int(os.getenv('CHUNK_SIZE')),
+            
+            'OUTPUT_FORMAT': os.getenv('OUTPUT_FORMAT'),
+            'EXTRACTOR_TYPE': os.getenv('EXTRACTOR_TYPE'),
+            'LOADER_TYPE': os.getenv('LOADER_TYPE'),
+            'MONITOR_TYPE': os.getenv('MONITOR_TYPE'),
+            'AWS_PROFILE': os.getenv('AWS_PROFILE'),
+            'WATERMARK_STORAGE_TYPE': os.getenv('WATERMARK_STORAGE_TYPE'),
+            'WATERMARK_TABLE': os.getenv('WATERMARK_TABLE'),
+            'WATERMARK_CSV_PATH': os.getenv('WATERMARK_CSV_PATH'),
+            'WATERMARK_PG_CONNECTION': os.getenv('WATERMARK_PG_CONNECTION'),
+            'WATERMARK_PG_SCHEMA': os.getenv('WATERMARK_PG_SCHEMA'),
+            
+            # NUEVOS PARÁMETROS
+            'CONNECTION_TIMEOUT': int(os.getenv('CONNECTION_TIMEOUT')),
+            'LOGIN_TIMEOUT': int(os.getenv('LOGIN_TIMEOUT')),
+            'MAX_RETRIES': int(os.getenv('MAX_RETRIES')),
+            'RETRY_DELAY': int(os.getenv('RETRY_DELAY')),
+            'USE_SQLALCHEMY': os.getenv('USE_SQLALCHEMY').lower() == 'true',
+            'CONNECTION_POOL_SIZE': int(os.getenv('CONNECTION_POOL_SIZE')),
+            'CONNECTION_POOL_RECYCLE': int(os.getenv('CONNECTION_POOL_RECYCLE'))
         }
-    
+
     def get(self, key: str, default: Any = None) -> Any:
         return self._config.get(key, default)
     

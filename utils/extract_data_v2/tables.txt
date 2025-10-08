@@ -1,1 +1,1 @@
-t_gc_mae_actividad_evento
+t_gc_mae_recurso_didatico_evento

@@ -422,30 +422,79 @@ class TransformationEngine:
             )
         
         elif function_name == 'fn_transform_Datetime':
-            origin_column = param_list[0] if param_list else ''
-            
-            if origin_column == '' or origin_column.upper() == 'NULL':
-                # Si no hay columna especificada, usar timestamp actual en Lima
+            # Verificar parámetros mínimos
+            if len(param_list) < 1:
+                # Sin parámetros - usar timestamp actual
                 return from_utc_timestamp(current_timestamp(), "America/Lima")
+            
+            origin_column = param_list[0]
+            
+            # Si el primer parámetro es vacío o NULL, usar timestamp actual
+            if not origin_column or origin_column.upper() in ['NULL', 'NONE', '']:
+                return from_utc_timestamp(current_timestamp(), "America/Lima")
+            
+            # Obtener formato y valor por defecto
+            date_format_param = param_list[1] if len(param_list) > 1 else "yyyy-MM-dd HH:mm:ss"
+            value_default = param_list[2] if len(param_list) > 2 else None
+            
+            # Crear valor por defecto
+            if value_default and value_default.upper() not in ['NULL', 'NONE', '']:
+                try:
+                    default_expr = to_timestamp(lit(value_default), date_format_param)
+                except:
+                    default_expr = lit(None).cast(TimestampType())
             else:
-                # Si hay columna especificada
-                return when(
-                    col(origin_column).isNull() |
-                    (col(origin_column).cast(StringType()).rlike("^\\s*$")) |
-                    (col(origin_column).cast(StringType()) == "None"),
-                    from_utc_timestamp(current_timestamp(), "America/Lima")
-                ).otherwise(
-                    # Intentar convertir el valor existente
-                    coalesce(
-                        # Intentar como timestamp directo
-                        to_timestamp(col(origin_column)),
-                        # Si falla, intentar con formato específico
-                        to_timestamp(col(origin_column), "yyyy-MM-dd HH:mm:ss"),
-                        # Si todo falla, usar timestamp actual
-                        from_utc_timestamp(current_timestamp(), "America/Lima")
-                    )
-                )
+                # Si especifica NULL o no hay default, usar null
+                default_expr = lit(None).cast(TimestampType())
+            
+            # Versión simplificada usando coalesce
+            return coalesce(
+                # Intentar convertir con el formato especificado
+                to_timestamp(col(origin_column), date_format_param),
+                # Si falla, usar valor por defecto
+                default_expr
+            )
         
+        elif function_name == 'fn_transform_Date':
+            # Verificar parámetros mínimos
+            if len(param_list) < 1:
+                # Sin parámetros - usar fecha actual
+                return current_date()
+            
+            origin_column = param_list[0]
+            
+            # Si el primer parámetro es vacío o NULL, usar fecha actual
+            if not origin_column or origin_column.upper() in ['NULL', 'NONE', '']:
+                return current_date()
+            
+            # Obtener formato y valor por defecto
+            date_format_param = param_list[1] if len(param_list) > 1 else "yyyy-MM-dd"
+            value_default = param_list[2] if len(param_list) > 2 else None
+            
+            # Crear valor por defecto
+            if value_default and value_default.upper() not in ['NULL', 'NONE', '']:
+                try:
+                    default_expr = to_date(lit(value_default), date_format_param)
+                except:
+                    default_expr = lit(None).cast(DateType())
+            else:
+                # Si especifica NULL o no hay default, usar null
+                default_expr = lit(None).cast(DateType())
+            
+            # Detectar si es timestamp Unix en millisegundos y convertir a fecha
+            return coalesce(
+                when(
+                    # Es un número (timestamp Unix en millisegundos)
+                    col(origin_column).cast(StringType()).rlike("^\\d{10,13}$"),
+                    # Convertir de millisegundos Unix a fecha
+                    to_date((col(origin_column).cast("bigint") / 1000).cast(TimestampType()))
+                ).otherwise(
+                    # Intentar convertir con el formato especificado
+                    to_date(col(origin_column), date_format_param)
+                ),
+                # Si falla, usar valor por defecto
+                default_expr
+            )
         else:
             raise TransformationException(function_name, f"Función no soportada: {function_name}")
     

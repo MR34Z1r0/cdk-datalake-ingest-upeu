@@ -10,6 +10,7 @@ from models.table_config import TableConfig
 from models.database_config import DatabaseConfig
 from models.extraction_result import ExtractionResult
 from interfaces.extractor_interface import ExtractorInterface
+from models.load_mode import LoadMode 
 from interfaces.loader_interface import LoaderInterface
 from interfaces.monitor_interface import MonitorInterface
 from interfaces.strategy_interface import StrategyInterface
@@ -22,17 +23,24 @@ from strategies.strategy_factory import StrategyFactory
 from utils.csv_loader import CSVConfigLoader
 from exceptions.custom_exceptions import *
 from config.settings import settings
-from aje_libs.common.logger import custom_logger
             
 
 class DataExtractionOrchestrator:
     """Main orchestrator for the data extraction process"""
     
-    def __init__(self, extraction_config: ExtractionConfig):
-        self.logger = custom_logger(__name__)
+    def __init__(self, extraction_config: ExtractionConfig, monitor: MonitorInterface = None, process_guid: str = None):
         self.extraction_config = extraction_config
+        self.monitor = monitor  # Recibir monitor desde main
+        self.process_guid = process_guid
         self.table_config: Optional[TableConfig] = None
         self.database_config: Optional[DatabaseConfig] = None
+    
+        # Inicializar logger - AGREGAR ESTA LÍNEA
+        from aje_libs.common.datalake_logger import DataLakeLogger
+        self.logger = DataLakeLogger.get_logger(__name__)
+        
+        if self.process_guid:
+            self.logger.info(f"🆔 Orchestrator initialized with process_guid: {self.process_guid}")
         
         # Components
         self.extractor: Optional[ExtractorInterface] = None
@@ -52,6 +60,11 @@ class DataExtractionOrchestrator:
             # Initialize all components
             self._initialize_components()
             
+            self.logger.info(
+                f"🚀 Starting extraction - "
+                f"table: {self.extraction_config.table_name} "
+                f"process_guid: {self.process_guid}")
+            
             # Log start
             self.monitor.log_start(
                 self.extraction_config.table_name,
@@ -65,13 +78,20 @@ class DataExtractionOrchestrator:
             # Execute extraction strategy
             extraction_result = self._execute_extraction_strategy()
             
-            # Log success
-            self.monitor.log_success(extraction_result)
+            if extraction_result.records_extracted > 0:
+                self.monitor.log_success(extraction_result)
             
             return extraction_result
             
         except Exception as e:
             error_message = f"Extraction failed: {str(e)}"
+            
+            self.logger.error(
+                f"❌ {error_message} "
+                f"table: {self.extraction_config.table_name} "
+                f"process_guid: {self.process_guid}",
+                exc_info=True
+            )
             
             # Log error
             if self.monitor:
@@ -151,12 +171,17 @@ class DataExtractionOrchestrator:
             **loader_config
         )
         
-        # Create monitor
-        monitor_config = self._build_monitor_config()
-        self.monitor = MonitorFactory.create(
-            monitor_type=settings.get('MONITOR_TYPE', 'dynamodb'),
-            **monitor_config
-        )
+        if not self.monitor:
+            self.monitor = MonitorFactory.create(
+                'dynamodb',
+                table_name=self.extraction_config.dynamo_logs_table,
+                project_name=self.extraction_config.data_source,
+                team=self.extraction_config.team,
+                data_source=self.extraction_config.data_source,
+                endpoint_name=self.extraction_config.endpoint_name,
+                environment=self.extraction_config.environment,
+                sns_topic_arn=self.extraction_config.topic_arn
+            )
         
         self.strategy = StrategyFactory.create(
             table_config=self.table_config,
@@ -359,38 +384,47 @@ class DataExtractionOrchestrator:
         self.logger.info("=== CONFIGURATION VALIDATION COMPLETED ===")
     
     def _execute_extraction_strategy(self) -> ExtractionResult:
-        """Execute the extraction strategy"""
+        """Execute the selected extraction strategy"""
         start_time = datetime.now()
+        strategy_name = self.strategy.get_strategy_name()
         
+        self.logger.info(
+            f"📊 Executing {strategy_name} strategy - "
+            f"table: {self.extraction_config.table_name} "
+            f"process_guid: {self.process_guid}"
+        )
+        
+        # Get destination path
         destination_path = self._build_destination_path()
         
-        # ✅ CORRECCIÓN: Solo eliminar archivos existentes si NO es incremental
-        strategy_name = self.strategy.get_strategy_name().lower()
-        
-        if strategy_name in ['full', 'full_load']:
-            self.logger.info("Full load strategy - deleting existing files")
-            self.loader.delete_existing(destination_path)
-        elif strategy_name in ['incremental']:
-            self.logger.info("Incremental strategy - preserving existing files")
-            # No eliminar archivos existentes en cargas incrementales
-        else:
-            # Para otras estrategias (time_range, etc.), también eliminar
+        # Delete existing files for strategies that require it
+        if self.extraction_config.load_mode in [LoadMode.INITIAL, LoadMode.RESET]:
             self.logger.info(f"{strategy_name} strategy - deleting existing files")
             self.loader.delete_existing(destination_path)
         
-        # Generate queries based on strategy
+        # 🔧 FIX: Generate queries based on strategy
         queries = self.strategy.generate_queries()
         
         if not queries:
             raise ExtractionError("No queries generated by strategy")
         
         # Execute queries with controlled concurrency
-        files_created, total_records = self._execute_queries_parallel(queries)
+        files_created, files_metadata, total_records = self._execute_queries_parallel(queries)
         
         end_time = datetime.now()
         execution_time = (end_time - start_time).total_seconds()
         
-        # Create result
+        if total_records == 0:
+            self.logger.warning(f"⚠️ No records extracted for table {self.extraction_config.table_name}")
+            
+            if self.monitor:
+                self.monitor.log_warning(
+                    self.extraction_config.table_name,
+                    "No data extracted - Table is empty or no records match filter criteria",
+                    self._build_metadata()
+                )
+        
+        # Create result with enriched metadata
         result = ExtractionResult(
             success=True,
             table_name=self.extraction_config.table_name,
@@ -400,8 +434,21 @@ class DataExtractionOrchestrator:
             strategy_used=self.strategy.get_strategy_name(),
             metadata=self._build_metadata(),
             start_time=start_time,
-            end_time=end_time
+            end_time=end_time,
+            files_metadata=files_metadata
         )
+        
+        # Log with aggregated metrics
+        if files_metadata:
+            total_size = sum(f.get('file_size_mb', 0) for f in files_metadata)
+            avg_size = total_size / len(files_metadata) if files_metadata else 0
+            
+            self.logger.info(
+                f"📊 Extraction Summary - "
+                f"Files: {len(files_created)}, "
+                f"Total Size: {total_size:.2f}MB, "
+                f"Avg Size: {avg_size:.2f}MB"
+            )
         
         self.extraction_result = result
         return result
@@ -410,130 +457,324 @@ class DataExtractionOrchestrator:
         """Execute queries with controlled parallel processing"""
         max_workers = min(self.extraction_config.max_threads, len(queries))
         files_created = []
+        all_files_metadata = []  # 🆕 Agregar lista para metadata
         total_records = 0
         
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
-            # Submit all query tasks
             future_to_query = {
                 executor.submit(self._execute_single_query, i, query): query
                 for i, query in enumerate(queries)
             }
             
-            # Process completed tasks
             for future in as_completed(future_to_query):
                 query = future_to_query[future]
                 try:
-                    file_path, record_count = future.result()
-                    if file_path:
-                        files_created.append(file_path)
+                    # 🔧 FIX: Ahora recibe 3 valores
+                    query_files, query_metadata, record_count = future.result()
+                    
+                    if query_files:
+                        if isinstance(query_files, list):
+                            files_created.extend(query_files)
+                        else:
+                            files_created.append(query_files)
+                    
+                    # 🆕 Agregar metadata
+                    if query_metadata:
+                        if isinstance(query_metadata, list):
+                            all_files_metadata.extend(query_metadata)
+                        else:
+                            all_files_metadata.append(query_metadata)
+                            
                     total_records += record_count
                 except Exception as e:
                     raise ExtractionError(f"Failed to execute query: {e}")
         
         # Handle empty result case
         if total_records == 0:
-            files_created, total_records = self._handle_empty_result()
+            empty_files, empty_records = self._handle_empty_result()
+            files_created = empty_files
+            total_records = empty_records
         
-        return files_created, total_records
+        return files_created, all_files_metadata, total_records
     
     def _execute_single_query(self, thread_id: int, query_metadata: Dict[str, Any]) -> tuple:
         """Execute a single query and load the data"""
         query = query_metadata['query']
         metadata = query_metadata.get('metadata', {})
         
+        self.logger.info(
+            f"🔍 Thread {thread_id} - Starting query execution - "
+            f"process_guid: {self.process_guid}"
+        )
+        
+        if metadata.get('query_type') == 'min_max' and metadata.get('needs_partitioned_queries'):
+            return self._handle_min_max_query(query, metadata)  # Ya retorna 3 valores
+ 
         files_created = []
+        files_metadata = []
         total_records = 0
         max_extracted_value = None
         
-        try:            
-            # Debug: imprimir información inicial
-            self.logger.info(f"🔍 DEBUG Strategy name: '{self.strategy.get_strategy_name()}'")
+        try:   
+            self.logger.info(
+                f"🔍 Thread {thread_id} - Strategy: {self.strategy.get_strategy_name()} - "
+                f"process_guid: {self.process_guid}"
+            )         
             self.logger.info(f"🔍 DEBUG Partition column: '{self.table_config.partition_column}'")
             self.logger.info(f"🔍 DEBUG Watermark storage available: {self.watermark_storage is not None}")
 
-            # Extract data
+            # Extract data parameters
             chunk_size = metadata.get('chunk_size', self.extraction_config.chunk_size)
+            chunking_params = metadata.get('chunking_params', {})
+            order_by = chunking_params.get('order_by')
+
             self.logger.info(f"🔍 DEBUG Chunk size: {chunk_size}")
-            self.logger.info(f"🔍 DEBUG query: {query}")
-            data_iterator = self.extractor.extract_data(query, chunk_size)
-            
+            self.logger.info(f"🔍 DEBUG Order by: {order_by}")
+            self.logger.info(f"🔍 DEBUG Chunking params: {chunking_params}")
+
+            data_iterator = self.extractor.extract_data(query, chunk_size, order_by)
             destination_path = metadata.get('destination_path', self._build_destination_path())
-            
+
             chunk_count = 0
             for chunk_df in data_iterator:
                 if chunk_df is not None and not chunk_df.empty:
-                    # Load data chunk
+                    self.logger.info(f"🔍 Processing chunk {chunk_count + 1} with {len(chunk_df)} rows")
+                    self.logger.info(
+                        f"🔍 Thread {thread_id} - Processing chunk {chunk_count + 1} "
+                        f"with {len(chunk_df)} rows - "
+                        f"process_guid: {self.process_guid}"
+                    )
+                    
+                    # 🎯 ACTUALIZAR MAX VALUE (para watermark)
+                    if (self.table_config.partition_column and 
+                        self.table_config.partition_column in chunk_df.columns):                        
+                        chunk_max = chunk_df[self.table_config.partition_column].max()
+                        if max_extracted_value is None or chunk_max > max_extracted_value:
+                            max_extracted_value = chunk_max
+                            self.logger.info(f"🔍 Updated max value: {max_extracted_value}")
+                    
+                    # ✅ CARGAR CHUNK UNA SOLA VEZ
                     file_path = self.loader.load_dataframe(
                         chunk_df, 
                         destination_path, 
                         thread_id=f"{thread_id}_{chunk_count}"
                     )
-                    files_created.append(file_path)
+                    
+                    if file_path:
+                        files_created.append(file_path)
+                    
                     total_records += len(chunk_df)
-                    self.logger.info(f"🔍 DEBUG Init Validate")  
-                    # 🎯 ACTUALIZAR MAX VALUE SI HAY PARTITION COLUMN (para cualquier estrategia)
-                    if (self.table_config.partition_column and 
-                        self.table_config.partition_column in chunk_df.columns):                        
-                        chunk_max = chunk_df[self.table_config.partition_column].max()
-                        self.logger.info(f"🔍 DEBUG Chunk max value: {chunk_max}")                        
-                        if max_extracted_value is None or chunk_max > max_extracted_value:
-                            max_extracted_value = chunk_max
-                            self.logger.info(f"🔍 DEBUG Updated max_extracted_value: {max_extracted_value}")
-                    else:
-                        self.logger.info(f"🔍 DEBUG Init Validate is False")  
                     chunk_count += 1
             
-            # Debug final antes de guardar watermark
-            self.logger.info(f"🔍 DEBUG Final max_extracted_value: {max_extracted_value}")
-            self.logger.info(f"🔍 DEBUG Strategy name for comparison: '{self.strategy.get_strategy_name()}'")
-            
-            # 🎯 SOLO GUARDAR WATERMARK SI ES INCREMENTAL Y HAY WATERMARK STORAGE
+            # 🎯 CONFIRMAR WATERMARK (si aplica)
             strategy_name = self.strategy.get_strategy_name().lower()
             is_incremental = strategy_name in ['incremental', 'incrementalstrategy']
+            should_track = metadata.get('should_track_watermark', False)
             
             self.logger.info(f"🔍 DEBUG is_incremental: {is_incremental}")
+            self.logger.info(f"🔍 DEBUG should_track: {should_track}")
             
             if (max_extracted_value is not None and 
                 self.watermark_storage and 
                 self.table_config.partition_column and
-                is_incremental):
+                (is_incremental or should_track)):
                 
-                self.logger.info(f"🔍 DEBUG Attempting to save watermark...")
-                
-                success = self.watermark_storage.set_last_extracted_value(
-                    table_name=self.table_config.stage_table_name,
-                    column_name=self.table_config.partition_column,
-                    value=str(max_extracted_value),
-                    metadata={
-                        'extraction_timestamp': datetime.now().isoformat(),
-                        'records_extracted': total_records,
-                        'files_created': len(files_created),
-                        'thread_id': thread_id,
-                        'strategy': self.strategy.get_strategy_name()
-                    }
-                )
-                
-                if success:
-                    self.logger.info(f"✅ Updated watermark: {self.table_config.stage_table_name}.{self.table_config.partition_column} = {max_extracted_value}")
+                # Guardar watermark
+                if hasattr(self.watermark_storage, 'confirm'):
+                    success = self.watermark_storage.confirm(
+                        table_name=self.table_config.stage_table_name,
+                        column_name=self.table_config.partition_column,
+                        additional_metadata={
+                            'confirmed_at': datetime.now().isoformat(),
+                            'records_extracted': total_records,
+                            'files_created': len(files_created),
+                            'thread_id': thread_id,
+                            'strategy': self.strategy.get_strategy_name()
+                        }
+                    )
+                    if success:
+                        self.logger.info(f"✅ Watermark saved: {max_extracted_value}")
                 else:
-                    self.logger.warning(f"❌ Failed to update watermark for {self.table_config.stage_table_name}")
-            
-            elif max_extracted_value is not None:
-                self.logger.info(f"📊 Max value extracted: {max_extracted_value}")
-                self.logger.info(f"💡 Watermark not saved because:")
-                self.logger.info(f"   - Watermark storage: {self.watermark_storage is not None}")
-                self.logger.info(f"   - Partition column: {self.table_config.partition_column}")
-                self.logger.info(f"   - Is incremental: {is_incremental}")
-                self.logger.info(f"   - Strategy: {self.strategy.get_strategy_name()}")
+                    # Método directo si no soporta transacciones
+                    self.watermark_storage.update_last_extracted_value(
+                        table_name=self.table_config.stage_table_name,
+                        column_name=self.table_config.partition_column,
+                        value=str(max_extracted_value)
+                    )
+                    self.logger.info(f"✅ Watermark saved: {max_extracted_value}")
             else:
-                self.logger.info("🔍 No max_extracted_value found - no watermark to save")
+                self.logger.info("🔍 No watermark to save")
             
-            # Si hay múltiples archivos, retornar el primero como representativo
-            return files_created[0] if files_created else None, total_records
+            return files_created, files_metadata, total_records
             
         except Exception as e:
+            self.logger.error(f"❌ Error in query execution: {e}")
             raise ExtractionError(f"Failed to execute query for thread {thread_id}: {e}")
     
+    def _handle_min_max_query(self, min_max_query: str, metadata: Dict[str, Any]) -> tuple:
+        """Maneja la ejecución de query MIN/MAX y genera queries particionadas"""
+        self.logger.info("🔍 Handling MIN/MAX query for partitioned load")
+        
+        try:
+            # 1. Ejecutar query MIN/MAX
+            df_results = []
+            for chunk_df in self.extractor.extract_data(min_max_query):
+                df_results.append(chunk_df)
+            
+            if not df_results or df_results[0].empty:
+                self.logger.warning(f"⚠️ MIN/MAX query returned no results. Skipping table.")
+                # Retornar resultado vacío pero válido
+                return [], [],0
+            
+            # 2. Extraer valores MIN/MAX
+            df = df_results[0]
+            min_val = df['min_val'].iloc[0]
+            max_val = df['max_val'].iloc[0]
+            
+            if min_val is None or max_val is None:
+                self.logger.warning(f"⚠️ No valid data found for partitioning (MIN/MAX returned None). Skipping table.")
+                # Retornar resultado vacío pero válido
+                return [], [],0
+
+            min_val = int(min_val)
+            max_val = int(max_val)
+            
+            self.logger.info(f"🔍 MIN/MAX results: min={min_val}, max={max_val}")
+            
+            # 3. Generar queries particionadas
+            partitioned_queries = self._generate_partitioned_queries(min_val, max_val, metadata)
+            
+            # 4. Ejecutar queries particionadas en paralelo
+            files_created, files_metadata, total_records = self._execute_partitioned_queries(partitioned_queries)
+            return files_created, files_metadata, total_records  # 🔧 Retornar 3 valores
+            
+        except Exception as e:
+            raise ExtractionError(f"Failed to handle MIN/MAX query: {e}")
+    
+    def _generate_partitioned_queries(self, min_val: int, max_val: int, metadata: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """Genera queries particionadas basadas en los valores MIN/MAX"""
+        partition_column = metadata['partition_column']
+        max_threads = min(self.extraction_config.max_threads, 30)
+        
+        range_size = max_val - min_val
+        number_threads = min(max_threads, max(1, range_size))
+        increment = max(1, range_size // number_threads)
+        
+        self.logger.info(f"🔍 Generating {number_threads} partitioned queries - Range: {range_size}, Increment: {increment}")
+        
+        queries = []
+        for i in range(number_threads):
+            start_value = int(min_val + (increment * i))
+            
+            if i == number_threads - 1:
+                end_value = max_val + 1  # Incluir el último valor
+            else:
+                end_value = int(min_val + (increment * (i + 1)))
+            
+            # Construir query particionada usando la configuración de tabla
+            partitioned_query = self._build_partitioned_query(partition_column, start_value, end_value)
+            
+            queries.append({
+                'query': partitioned_query,
+                'thread_id': i,
+                'metadata': {
+                    **metadata,
+                    'partition_index': i,
+                    'start_range': start_value,
+                    'end_range': end_value,
+                    'chunking_params': self._get_chunking_params_for_partition()
+                }
+            })
+        
+        return queries
+
+    def _parse_columns_for_partition(self) -> str:
+        """Construye las columnas para queries particionadas"""
+        columns_list = []
+        
+        # Agregar ID_COLUMN si existe
+        if hasattr(self.table_config, 'id_column') and self.table_config.id_column and self.table_config.id_column.strip():
+            id_column_expr = f"{self.table_config.id_column.strip()} as id"
+            columns_list.append(id_column_expr)
+        
+        # Agregar las columnas regulares
+        if self.table_config.columns and self.table_config.columns.strip():
+            columns_list.append(self.table_config.columns.strip())
+        else:
+            columns_list.append('*')
+        
+        return ', '.join(columns_list)
+
+    def _get_chunking_params_for_partition(self) -> dict:
+        """Obtiene parámetros de chunking para particiones"""
+        chunking_params = {}
+        
+        # Si tiene partition_column configurado, usar para chunking
+        if hasattr(self.table_config, 'partition_column') and self.table_config.partition_column:
+            chunking_params['order_by'] = self.table_config.partition_column.strip()
+        
+        # Agregar chunk_size si está configurado
+        if self.extraction_config.chunk_size:
+            chunking_params['chunk_size'] = self.extraction_config.chunk_size
+        
+        return chunking_params
+
+    def _build_partitioned_query(self, partition_column: str, start_value: int, end_value: int) -> str:
+        """Construye una query particionada individual"""
+        # Construir columnas con ID_COLUMN si existe
+        columns = self._parse_columns_for_partition()
+        
+        # Construir FROM con JOINs
+        from_clause = f"{self.table_config.source_schema}.{self.table_config.source_table}"
+        if hasattr(self.table_config, 'join_expr') and self.table_config.join_expr:
+            from_clause += f" {self.table_config.join_expr}"
+        
+        # Construir WHERE con partición y filtros
+        where_conditions = [f"{partition_column} >= {start_value} AND {partition_column} < {end_value}"]
+        
+        if hasattr(self.table_config, 'filter_exp') and self.table_config.filter_exp:
+            filter_exp = self.table_config.filter_exp.strip().replace('"', '')
+            where_conditions.append(f"({filter_exp})")
+        
+        query = f"SELECT {columns} FROM {from_clause} WHERE {' AND '.join(where_conditions)}"
+        
+        self.logger.info(f"🔍 Generated partitioned query: Range {start_value}-{end_value}")
+        return query
+
+    def _execute_partitioned_queries(self, partitioned_queries: List[Dict[str, Any]]) -> tuple:
+        """Ejecuta las queries particionadas en paralelo"""
+        self.logger.info(
+            f"🔍 Executing {len(partitioned_queries)} partitioned queries in parallel - "
+            f"process_guid: {self.process_guid}"
+        )
+        
+        files_created = []
+        all_files_metadata = []  # 🆕
+        total_records = 0
+        
+        max_workers = min(self.extraction_config.max_threads, len(partitioned_queries))
+        
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            future_to_query = {
+                executor.submit(self._execute_partition_query, i, query): query
+                for i, query in enumerate(partitioned_queries)
+            }
+            
+            for future in as_completed(future_to_query):
+                try:
+                    # 🆕 Ahora recibe metadata también
+                    partition_files, partition_metadata, record_count = future.result()
+                    
+                    if partition_files:
+                        files_created.extend(partition_files)
+                        all_files_metadata.extend(partition_metadata)
+                        
+                    total_records += record_count
+                except Exception as e:
+                    raise ExtractionError(f"Failed to execute partitioned query: {e}")
+        
+        return files_created, all_files_metadata, total_records
+
     def _handle_empty_result(self) -> tuple:
         """Handle case where no data was extracted"""
         files_created = []
@@ -579,6 +820,7 @@ class DataExtractionOrchestrator:
     def _build_metadata(self) -> Dict[str, Any]:
         """Build metadata for logging"""
         metadata = {
+            'process_guid': self.process_guid,
             'project_name': self.extraction_config.project_name,
             'team': self.extraction_config.team,
             'data_source': self.extraction_config.data_source,
@@ -606,3 +848,110 @@ class DataExtractionOrchestrator:
                 self.extractor.close()
             except Exception:
                 pass
+     
+    def _execute_partition_query(self, thread_id: int, query_metadata: Dict[str, Any]) -> tuple:
+        """Ejecuta una query particionada individual con metadata completa"""
+        self.logger.info(f"🔍 DEBUG: Starting _execute_partition_query for thread {thread_id}")
+        
+        query = query_metadata['query']
+        metadata = query_metadata.get('metadata', {})
+        
+        files_created = []
+        files_metadata = []
+        total_records = 0
+        
+        try:
+            chunk_size = metadata.get('chunk_size', self.extraction_config.chunk_size)
+            chunking_params = metadata.get('chunking_params', {})
+            order_by = chunking_params.get('order_by')
+            
+            destination_path = metadata.get('destination_path', self._build_destination_path())
+            partition_index = metadata.get('partition_index')
+            
+            chunk_count = 0
+            for chunk_df in self.extractor.extract_data(query, chunk_size, order_by):
+                chunk_count += 1
+                
+                if chunk_df is not None and not chunk_df.empty:
+                    self.logger.info(f"🔍 DEBUG: Processing chunk {chunk_count} with {len(chunk_df)} rows")
+                    
+                    # Cargar chunk
+                    file_path = self.loader.load_dataframe(
+                        chunk_df, 
+                        destination_path, 
+                        thread_id=f"{thread_id}_{chunk_count-1}",
+                        chunk_id=chunk_count-1
+                    )
+                    
+                    if file_path:
+                        files_created.append(file_path)
+                        
+                        # 🆕 Obtener tamaño del archivo desde S3
+                        file_size_bytes = self._get_s3_file_size(file_path)
+                        file_size_mb = round(file_size_bytes / (1024 * 1024), 2) if file_size_bytes else 0
+                        
+                        # Construir metadata completa
+                        file_name = file_path.split('/')[-1] if '/' in file_path else file_path
+                        file_metadata = {
+                            'file_path': file_path,
+                            'file_name': file_name,
+                            'file_size_bytes': file_size_bytes,
+                            'file_size_mb': file_size_mb,
+                            'records_count': len(chunk_df),
+                            'columns_count': len(chunk_df.columns),
+                            'thread_id': str(thread_id),
+                            'chunk_id': chunk_count - 1,
+                            'partition_index': partition_index,
+                            'created_at': datetime.now().isoformat(),
+                            'compression': 'snappy',  # Por defecto en parquet
+                            'format': 'parquet'
+                        }
+                        files_metadata.append(file_metadata)
+                    
+                    total_records += len(chunk_df)
+                    
+                    self.logger.info(
+                        f"📁 File created: {file_name} | "
+                        f"Size: {file_size_mb}MB | "
+                        f"Records: {len(chunk_df):,} | "
+                        f"Columns: {len(chunk_df.columns)}"
+                    )
+            
+            self.logger.info(
+                f"✅ Thread {thread_id} completed: {total_records:,} records, "
+                f"{len(files_created)} files, "
+                f"{sum(f['file_size_mb'] for f in files_metadata):.2f}MB total"
+            )
+            
+            return files_created, files_metadata, total_records
+            
+        except Exception as e:
+            self.logger.error(f"❌ ERROR in _execute_partition_query for thread {thread_id}: {e}")
+            import traceback
+            self.logger.error(f"🔍 Traceback: {traceback.format_exc()}")
+            raise ExtractionError(f"Failed to execute partition query for thread {thread_id}: {e}")
+
+    def _get_s3_file_size(self, s3_path: str) -> int:
+        """Obtiene el tamaño de un archivo en S3"""
+        try:
+            # Remover prefijo s3://
+            if s3_path.startswith('s3://'):
+                s3_path = s3_path[5:]
+            
+            # Separar bucket y key
+            parts = s3_path.split('/', 1)
+            if len(parts) != 2:
+                return 0
+                
+            bucket_name, key = parts
+            
+            # Obtener metadata del archivo
+            import boto3
+            s3_client = boto3.client('s3')
+            response = s3_client.head_object(Bucket=bucket_name, Key=key)
+            
+            return response['ContentLength']
+            
+        except Exception as e:
+            self.logger.warning(f"No se pudo obtener tamaño de archivo {s3_path}: {e}")
+            return 0

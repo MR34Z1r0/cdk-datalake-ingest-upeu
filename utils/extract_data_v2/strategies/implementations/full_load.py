@@ -3,9 +3,10 @@ from typing import List
 from ..base.extraction_strategy import ExtractionStrategy
 from ..base.extraction_params import ExtractionParams
 from ..base.strategy_types import ExtractionStrategyType
-from aje_libs.common.logger import custom_logger
+from aje_libs.common.datalake_logger import DataLakeLogger
+from models.load_mode import LoadMode
 
-logger = custom_logger(__name__)
+logger = DataLakeLogger.get_logger(__name__)
 
 class FullLoadStrategy(ExtractionStrategy):
     """Estrategia para carga completa - simple y directa"""
@@ -14,37 +15,207 @@ class FullLoadStrategy(ExtractionStrategy):
         return ExtractionStrategyType.FULL_LOAD
     
     def build_extraction_params(self) -> ExtractionParams:
-        """Construye parámetros para carga completa"""
-        logger.info(f"=== FULL LOAD STRATEGY - Building Params ===")
+        logger.info(f"=== FULL LOAD STRATEGY ===")
         logger.info(f"Table: {self.extraction_config.table_name}")
+        logger.info(f"Load Mode: {self.extraction_config.load_mode.value}")
         
-        # 🎯 FULL LOAD NO USA WATERMARKS
-        if self.watermark_storage:
-            logger.info("⚠️  Watermark storage provided but not used in full load strategy")
+        # 🔄 RESET mode: Limpiar watermark existente
+        if self.extraction_config.load_mode == LoadMode.RESET:
+            self._reset_watermark_if_exists()
         
-        # Crear parámetros básicos
+        # 🎯 Determinar si debe trackear watermark
+        should_track_watermark = self._should_track_watermark()
+        
+        if should_track_watermark:
+            logger.info("✅ Full load will track watermark")
+        else:
+            logger.info("ℹ️ Full load without watermark tracking")
+        
+        # Detectar si necesita particionado
+        if self._should_use_partitioned_load():
+            logger.info("⚠️ Partitioned full load detected")
+            return self._build_partitioned_params(should_track_watermark)
+        
+        # Carga no particionada
+        logger.info("📋 Building non-partitioned full load params")
+        
+        metadata = self._build_basic_metadata()
+        
+        # Marcar si debe rastrear watermark
+        if should_track_watermark:
+            metadata['should_track_watermark'] = True
+            metadata['watermark_column'] = self.table_config.partition_column
+            logger.info(f"📊 Watermark tracking enabled for: {self.table_config.partition_column}")
+        
         params = ExtractionParams(
             table_name=self._get_source_table_name(),
             columns=self._parse_columns(),
-            metadata=self._build_basic_metadata()
+            metadata=metadata
         )
         
-        # Agregar filtros básicos si existen (SIN watermarks)
+        # Agregar filtros básicos
         basic_filters = self._build_basic_filters()
         for filter_condition in basic_filters:
-            params.add_where_condition(filter_condition)
+            if filter_condition:
+                params.add_where_condition(filter_condition)
+                logger.info(f"➕ Added filter: {filter_condition}")
         
-        # Configurar chunking si es apropiado
-        if self._should_use_chunking():
-            params.chunk_size = self.extraction_config.chunk_size
-            params.chunk_column = self._get_chunking_column()
-            logger.info(f"Chunking enabled - Size: {params.chunk_size}, Column: {params.chunk_column}")
-        
-        logger.info(f"Full load extraction params built - Columns: {len(params.columns)}, Where conditions: {len(params.where_conditions)}")
-        logger.info("=== END FULL LOAD STRATEGY ===")
-        
+        logger.info(f"✅ Params built - Columns: {len(params.columns)}, Filters: {len(params.where_conditions)}")
         return params
     
+    def _should_track_watermark(self) -> bool:
+        """
+        Determina si debe guardar watermark después de esta carga.
+        
+        TRUE cuando:
+        - Es modo INITIAL o RESET
+        - Tiene partition_column configurado
+        - Tiene watermark storage disponible
+        - La tabla está configurada para incremental
+        """
+        
+        has_partition_column = (
+            hasattr(self.table_config, 'partition_column') and 
+            self.table_config.partition_column and 
+            self.table_config.partition_column.strip()
+        )
+        
+        has_watermark_storage = self.watermark_storage is not None
+        
+        is_incremental_table = (
+            hasattr(self.table_config, 'load_type') and
+            self.table_config.load_type and
+            self.table_config.load_type.lower() == 'incremental'
+        )
+        
+        load_mode = self.extraction_config.load_mode
+        
+        # Solo trackear en INITIAL o RESET
+        should_track = (
+            load_mode in [LoadMode.INITIAL, LoadMode.RESET] and
+            has_partition_column and
+            has_watermark_storage and
+            is_incremental_table
+        )
+        
+        logger.info(f"🔍 Watermark tracking decision:")
+        logger.info(f"   - Load Mode: {load_mode.value}")
+        logger.info(f"   - Has partition column: {has_partition_column}")
+        logger.info(f"   - Has watermark storage: {has_watermark_storage}")
+        logger.info(f"   - Is incremental table: {is_incremental_table}")
+        logger.info(f"   - Should track: {should_track}")
+        
+        return should_track
+    
+    def _reset_watermark_if_exists(self):
+        """Limpia el watermark existente en modo RESET"""
+        if not self.watermark_storage:
+            logger.info("No watermark storage - skip reset")
+            return
+        
+        if not (hasattr(self.table_config, 'partition_column') and 
+                self.table_config.partition_column):
+            logger.info("No partition column - skip reset")
+            return
+        
+        try:
+            # Verificar si existe watermark antes de intentar eliminar
+            existing_watermark = self.watermark_storage.get_last_extracted_value(
+                table_name=self.table_config.stage_table_name,
+                column_name=self.table_config.partition_column
+            )
+            
+            if existing_watermark:
+                logger.info(f"🗑️ Found existing watermark: {existing_watermark}")
+                
+                # Si el storage soporta delete, usarlo
+                if hasattr(self.watermark_storage, 'delete_watermark'):
+                    self.watermark_storage.delete_watermark(
+                        table_name=self.table_config.stage_table_name,
+                        column_name=self.table_config.partition_column
+                    )
+                    logger.info(f"✅ Watermark deleted for {self.table_config.stage_table_name}")
+                else:
+                    logger.warning("Watermark storage does not support delete operation")
+            else:
+                logger.info("No existing watermark to reset")
+                
+        except Exception as e:
+            logger.warning(f"Failed to reset watermark: {e}")
+    
+    def _should_use_partitioned_load(self) -> bool:
+        """Detecta si la tabla requiere particionado"""
+        return (
+            hasattr(self.table_config, 'source_table_type') and 
+            self.table_config.source_table_type == 't' and
+            hasattr(self.table_config, 'partition_column') and 
+            self.table_config.partition_column and 
+            self.table_config.partition_column.strip() != ''
+        )
+
+    def _build_partitioned_params(self, should_track_watermark: bool = False) -> ExtractionParams:
+        """
+        Construye parámetros especiales para carga particionada
+        
+        Args:
+            should_track_watermark: Si debe rastrear watermark durante esta carga completa
+            
+        Returns:
+            ExtractionParams configurado para particionado
+        """
+        logger.info("🔧 Building partitioned params for full load")
+        
+        # Construir table_name con JOIN para particionado
+        table_name_with_joins = f"{self.table_config.source_schema}.{self.table_config.source_table}"
+        
+        if hasattr(self.table_config, 'join_expr') and self.table_config.join_expr and self.table_config.join_expr.strip():
+            table_name_with_joins += f" {self.table_config.join_expr.strip()}"
+            logger.info(f"📎 Table with JOIN: {table_name_with_joins}")
+        
+        # Construir metadata completo
+        metadata = {
+            **self._build_basic_metadata(),
+            'needs_partitioning': True,
+            'partition_column': self.table_config.partition_column,
+            'source_table_type': self.table_config.source_table_type,
+            'chunk_size': self.extraction_config.chunk_size
+        }
+        
+        # 🔑 Agregar watermark tracking si es necesario
+        if should_track_watermark:
+            metadata['should_track_watermark'] = True
+            metadata['watermark_column'] = self.table_config.partition_column
+            logger.info(f"📊 Partitioned load will track watermark for column: {self.table_config.partition_column}")
+        else:
+            logger.info(f"ℹ️ Partitioned load without watermark tracking")
+        
+        # Crear params
+        params = ExtractionParams(
+            table_name=table_name_with_joins,
+            columns=self._parse_columns(),
+            metadata=metadata
+        )
+        
+        # Agregar filtros básicos (FILTER_EXP, sin fechas hardcodeadas)
+        basic_filters = self._build_basic_filters()
+        for filter_condition in basic_filters:
+            if filter_condition:  # Solo agregar si no está vacío
+                params.add_where_condition(filter_condition)
+                logger.info(f"➕ Added filter: {filter_condition}")
+        
+        logger.info(f"✅ Partitioned params built successfully")
+        return params
+
+    def _should_use_partitioned_load(self) -> bool:
+        """Detecta si la tabla requiere particionado"""
+        return (
+            hasattr(self.table_config, 'source_table_type') and 
+            self.table_config.source_table_type == 't' and
+            hasattr(self.table_config, 'partition_column') and 
+            self.table_config.partition_column and 
+            self.table_config.partition_column.strip() != ''
+        )
+
     def validate(self) -> bool:
         """Valida configuración para carga completa"""
         logger.info("=== FULL LOAD STRATEGY VALIDATION ===")

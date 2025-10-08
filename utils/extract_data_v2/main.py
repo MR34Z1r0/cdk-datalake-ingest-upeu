@@ -6,116 +6,46 @@ Flexible data extraction system supporting multiple databases and destinations
 """
 
 import sys
-import argparse
+import time
+import logging
 import traceback
-from pathlib import Path
+from datetime import datetime
+from typing import Optional
 
-# Add current directory to path for imports
-sys.path.insert(0, str(Path(__file__).parent))
-
-from models.extraction_config import ExtractionConfig
+from aje_libs.common.datalake_logger import DataLakeLogger
+from monitoring.monitor_factory import MonitorFactory
+from interfaces.monitor_interface import MonitorInterface
 from core.orchestrator import DataExtractionOrchestrator
-from exceptions.custom_exceptions import *
+from models.extraction_config import ExtractionConfig
+from exceptions.custom_exceptions import (
+    ConfigurationError, ConnectionError, 
+    ExtractionError, LoadError
+)
 from config.settings import settings
-from aje_libs.common.logger import custom_logger, set_logger_config
+import argparse
 
 def parse_arguments():
-    """Parse command line arguments"""
-    parser = argparse.ArgumentParser(
-        description='Extract data from source database and load to destination',
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="""
-Examples:
-  # Extract specific table
-  python main.py -t STG_USERS
-
-  # Extract with custom parameters (for local testing)
-  python main.py -t STG_USERS --project-name myproject --team myteam
-  
-  # Force full load
-  python main.py -t STG_USERS --force-full-load
-        """
-    )
+    """Parse command line arguments - only table name required"""
+    parser = argparse.ArgumentParser(description='Data Extraction Tool')
     
-    # Required arguments
-    parser.add_argument(
-        '-t', '--table-name',
-        required=True,
-        help='Target table name to extract'
-    )
+    # ÚNICO argumento requerido
+    parser.add_argument('--table-name', '-t',
+                       required=True,
+                       help='Table name to extract')
     
-    # Optional arguments (mainly for local development)
-    parser.add_argument(
-        '--project-name',
-        help='Project name (overrides environment/config)'
-    )
-    
-    parser.add_argument(
-        '--team',
-        help='Team name (overrides environment/config)'
-    )
-    
-    parser.add_argument(
-        '--data-source',
-        help='Data source name (overrides environment/config)'
-    )
-    
-    parser.add_argument(
-        '--endpoint-name',
-        help='Database endpoint name (overrides environment/config)'
-    )
-    
-    parser.add_argument(
-        '--environment',
-        help='Environment (DEV, PROD, etc.) (overrides environment/config)'
-    )
-    
-    parser.add_argument(
-        '--force-full-load',
-        action='store_true',
-        help='Force full load even for incremental tables'
-    )
-    
-    parser.add_argument(
-        '--max-threads',
-        type=int,
-        default=6,
-        help='Maximum number of threads for parallel processing (default: 6)'
-    )
-    
-    parser.add_argument(
-        '--output-format',
-        choices=['parquet', 'csv', 'json'],
-        default='parquet',
-        help='Output file format (default: parquet)'
-    )
-    
-    parser.add_argument(
-        '--chunk-size',
-        type=int,
-        default=500000,
-        help='Chunk size for large table processing (default: 500000)'
-    )
-    
-    parser.add_argument(
-        '--log-level',
-        choices=['DEBUG', 'INFO', 'WARNING', 'ERROR'],
-        default='INFO',
-        help='Logging level (default: INFO)'
-    )
-    
-    parser.add_argument(
-        '--dry-run',
-        action='store_true',
-        help='Validate configuration without executing extraction'
-    )
+    # Argumentos opcionales para debugging/override (raramente usados)
+    parser.add_argument('--log-level', 
+                       choices=['DEBUG', 'INFO', 'WARNING', 'ERROR'], 
+                       default='INFO',
+                       help='Log level (default: INFO)')
+    parser.add_argument('--dry-run', 
+                       action='store_true', 
+                       help='Validate configuration only, do not extract')
     
     return parser.parse_args()
 
-def setup_logging(log_level: str):
-    """Setup logging configuration"""
-    import logging
-    
+def setup_logging(log_level: str, table_name: str, team: str, data_source: str):
+    """Setup DataLakeLogger configuration"""
     log_level_map = {
         'DEBUG': logging.DEBUG,
         'INFO': logging.INFO,
@@ -123,217 +53,207 @@ def setup_logging(log_level: str):
         'ERROR': logging.ERROR
     }
     
-    set_logger_config(
+    DataLakeLogger.configure_global(
         log_level=log_level_map.get(log_level, logging.INFO),
-        service='extract_data'
+        service_name="extract_data",
+        correlation_id=f"{team}-{data_source}-extract_data-{table_name}",
+        owner=team,
+        auto_detect_env=True,
+        force_local_mode=False
+    )
+
+def setup_monitoring(extraction_config: ExtractionConfig) -> MonitorInterface:
+    """
+    Setup monitoring system - ÚNICO PUNTO DE ENTRADA para logs de DynamoDB
+    """
+    return MonitorFactory.create(
+        'dynamodb',
+        table_name=extraction_config.dynamo_logs_table,
+        project_name=extraction_config.data_source,
+        sns_topic_arn=extraction_config.topic_arn,
+        team=extraction_config.team,
+        data_source=extraction_config.data_source,
+        endpoint_name=extraction_config.endpoint_name,
+        environment=extraction_config.environment
     )
 
 def create_extraction_config(args) -> ExtractionConfig:
-    """Create extraction configuration from arguments and settings"""
-    
-    # Get base configuration from settings
+    """
+    Create extraction configuration from .env
+    Only table_name comes from CLI args, everything else from .env
+    """
     base_config = settings.get_all()
     
-    # Override with command line arguments if provided
-    overrides = {}
+    # Validar que existan las variables críticas del .env
+    required_env_vars = ['PROJECT_NAME', 'TEAM', 'DATA_SOURCE', 'ENDPOINT_NAME', 
+                         'ENVIRONMENT', 'MAX_THREADS', 'CHUNK_SIZE']
+    missing_vars = [var for var in required_env_vars if not base_config.get(var)]
     
-    if args.project_name:
-        overrides['PROJECT_NAME'] = args.project_name
-    if args.team:
-        overrides['TEAM'] = args.team
-    if args.data_source:
-        overrides['DATA_SOURCE'] = args.data_source
-    if args.endpoint_name:
-        overrides['ENDPOINT_NAME'] = args.endpoint_name
-    if args.environment:
-        overrides['ENVIRONMENT'] = args.environment
-    if args.force_full_load:
-        overrides['FORCE_FULL_LOAD'] = True
-    if args.max_threads:
-        overrides['MAX_THREADS'] = args.max_threads
-    if args.output_format:
-        overrides['OUTPUT_FORMAT'] = args.output_format
-    if args.chunk_size:
-        overrides['CHUNK_SIZE'] = args.chunk_size
+    if missing_vars:
+        raise ConfigurationError(
+            f"Missing required environment variables in .env: {', '.join(missing_vars)}"
+        )
     
-    # Update settings with overrides
-    if overrides:
-        settings.update(overrides)
-        base_config = settings.get_all()
-    
-    # Set table name
-    base_config['TABLE_NAME'] = args.table_name
-    
-    # Create extraction config
-    extraction_config = ExtractionConfig(
-        project_name=base_config['PROJECT_NAME'],
-        team=base_config['TEAM'],
-        data_source=base_config['DATA_SOURCE'],
-        endpoint_name=base_config['ENDPOINT_NAME'],
-        environment=base_config['ENVIRONMENT'],
-        table_name=base_config['TABLE_NAME'],
+    return ExtractionConfig(
+        # Campos obligatorios desde .env
+        project_name=base_config.get('PROJECT_NAME'),
+        team=base_config.get('TEAM'),
+        data_source=base_config.get('DATA_SOURCE'),
+        endpoint_name=base_config.get('ENDPOINT_NAME'),
+        environment=base_config.get('ENVIRONMENT'),
+        
+        # ÚNICO campo desde CLI
+        table_name=args.table_name,
+        
+        # Resto desde .env
+        max_threads=base_config.get('MAX_THREADS'),
+        chunk_size=base_config.get('CHUNK_SIZE'),
+        force_full_load=base_config.get('FORCE_FULL_LOAD', False),
+        output_format=base_config.get('OUTPUT_FORMAT', 'parquet'),
+        
+        # Campos opcionales
         s3_raw_bucket=base_config.get('S3_RAW_BUCKET'),
         dynamo_logs_table=base_config.get('DYNAMO_LOGS_TABLE'),
         topic_arn=base_config.get('TOPIC_ARN'),
-        max_threads=base_config.get('MAX_THREADS', 6),
-        chunk_size=base_config.get('CHUNK_SIZE', 500000),
-        force_full_load=base_config.get('FORCE_FULL_LOAD', False),
-        output_format=base_config.get('OUTPUT_FORMAT', 'parquet')
     )
-    
-    return extraction_config
 
 def validate_environment():
-    """Validate that the environment is properly configured"""
-    logger = custom_logger(__name__)
+    """Validate required environment variables"""
+    logger = DataLakeLogger.get_logger(__name__)
+    required_vars = ['S3_RAW_BUCKET', 'DYNAMO_LOGS_TABLE']
     
-    # Check required settings
-    required_settings = [
-        'PROJECT_NAME', 'TEAM', 'DATA_SOURCE', 
-        'ENDPOINT_NAME', 'ENVIRONMENT'
-    ]
+    missing = [var for var in required_vars if not settings.get(var)]
     
-    missing_settings = []
-    for setting in required_settings:
-        if not settings.get(setting):
-            missing_settings.append(setting)
+    if missing:
+        raise ConfigurationError(f"Missing required variables: {', '.join(missing)}")
     
-    if missing_settings:
-        raise ConfigurationError(
-            f"Missing required configuration: {', '.join(missing_settings)}"
-        )
-    
-    logger.info("Environment validation passed")
+    logger.info("✅ Environment validation passed")
 
 def print_configuration_summary(extraction_config: ExtractionConfig):
     """Print configuration summary"""
-    logger = custom_logger(__name__)
+    logger = DataLakeLogger.get_logger(__name__)
     
     logger.info("=" * 80)
-    logger.info("DATA EXTRACTION CONFIGURATION SUMMARY")
+    logger.info("📋 DATA EXTRACTION CONFIGURATION SUMMARY")
     logger.info("=" * 80)
-    logger.info(f"Table Name: {extraction_config.table_name}")
-    logger.info(f"Project: {extraction_config.project_name}")
-    logger.info(f"Team: {extraction_config.team}")
-    logger.info(f"Data Source: {extraction_config.data_source}")
-    logger.info(f"Endpoint: {extraction_config.endpoint_name}")
-    logger.info(f"Environment: {extraction_config.environment}")
-    logger.info(f"Output Format: {extraction_config.output_format}")
-    logger.info(f"Max Threads: {extraction_config.max_threads}")
-    logger.info(f"Chunk Size: {extraction_config.chunk_size:,}")
-    logger.info(f"Force Full Load: {extraction_config.force_full_load}")
-    logger.info(f"Running in AWS: {settings.is_aws_glue}")
+    logger.info(f"📊 Table: {extraction_config.table_name}")
+    logger.info(f"👥 Team: {extraction_config.team}")
+    logger.info(f"📡 Source: {extraction_config.data_source}")
+    logger.info(f"🌍 Environment: {extraction_config.environment}")
+    logger.info(f"📁 Format: {extraction_config.output_format}")
+    logger.info(f"🧵 Threads: {extraction_config.max_threads}")
+    logger.info(f"📦 Chunk Size: {extraction_config.chunk_size:,}")
+    logger.info(f"🔄 Full Load: {extraction_config.force_full_load}")
+    logger.info("=" * 80)
+
+def print_results_summary(result, logger):
+    """Print extraction results"""
+    logger.info("=" * 80)
+    logger.info("🎉 EXTRACTION COMPLETED SUCCESSFULLY")
+    logger.info(f"📊 Records: {result.records_extracted:,}")
+    logger.info(f"📁 Files: {len(result.files_created)}")
+    logger.info(f"⏱️ Time: {result.execution_time_seconds:.2f}s")
+    logger.info(f"🎯 Strategy: {result.strategy_used}")
     logger.info("=" * 80)
 
 def main():
-    """Main entry point"""
+    """Main entry point with integrated logging"""
     logger = None
+    monitor: Optional[MonitorInterface] = None
+    extraction_config = None
+    process_id = None
     
     try:
-        # Parse arguments
+        # Setup inicial
         args = parse_arguments()
-        
-        # Setup logging
-        setup_logging(args.log_level)
-        logger = custom_logger(__name__)
-        
-        logger.info("Starting Data Extraction Process")
-        
-        # Validate environment
-        validate_environment()
-        
-        # Create extraction configuration
         extraction_config = create_extraction_config(args)
+        setup_logging(args.log_level, extraction_config.table_name, 
+                     extraction_config.team, extraction_config.data_source)
         
-        # Print configuration summary
+        logger = DataLakeLogger.get_logger(__name__)
+        DataLakeLogger.print_environment_info()
+        
+        # ÚNICO monitor centralizado
+        monitor = setup_monitoring(extraction_config)
+        
+        logger.info("🚀 Starting Data Extraction Process", {
+            "table": extraction_config.table_name,
+            "team": extraction_config.team,
+            "data_source": extraction_config.data_source
+        })
+        
+        validate_environment()
         print_configuration_summary(extraction_config)
         
-        # Dry run mode - just validate configuration
+        # Dry run mode
         if args.dry_run:
-            logger.info("DRY RUN MODE - Configuration validation only")
-            
-            # Create orchestrator to validate configuration
+            logger.info("🧪 DRY RUN MODE - Configuration validation only")
             orchestrator = DataExtractionOrchestrator(extraction_config)
-            orchestrator._load_configurations()  # This will validate configs
-            
+            orchestrator._load_configurations()
             logger.info("✅ Configuration validation successful")
-            logger.info("DRY RUN COMPLETED - No data was extracted")
+            logger.info("🧪 DRY RUN COMPLETED - No data was extracted")
             return 0
-        
-        # Execute extraction
-        logger.info("Initializing Data Extraction Orchestrator")
-        orchestrator = DataExtractionOrchestrator(extraction_config)
-        
-        logger.info("Starting data extraction...")
+         
+        # Execute extraction con el monitor integrado
+        orchestrator = DataExtractionOrchestrator(extraction_config, monitor=monitor)
         result = orchestrator.execute()
         
-        # Print results
-        logger.info("=" * 80)
-        logger.info("EXTRACTION COMPLETED SUCCESSFULLY")
-        logger.info("=" * 80)
-        logger.info(f"Records Extracted: {result.records_extracted:,}")
-        logger.info(f"Files Created: {len(result.files_created)}")
-        logger.info(f"Execution Time: {result.execution_time_seconds:.2f} seconds")
-        logger.info(f"Strategy Used: {result.strategy_used}")
+        # Log success SOLO a través del monitor
+        print_results_summary(result, logger)
         
-        if result.files_created:
-            logger.info("Files created:")
-            for file_path in result.files_created[:10]:  # Show first 10 files
-                logger.info(f"  - {file_path}")
-            if len(result.files_created) > 10:
-                logger.info(f"  ... and {len(result.files_created) - 10} more files")
-        
-        logger.info("=" * 80)
+        # NO llamar a dynamo_logger.log_success, ya se hace en orchestrator
+        # El orchestrator internamente llama a monitor.log_success
         
         return 0
         
     except KeyboardInterrupt:
+        error_msg = "Process interrupted by user"
         if logger:
-            logger.warning("Process interrupted by user")
-        else:
-            print("Process interrupted by user")
+            logger.warning(f"⚠️ {error_msg}")
+        if monitor and extraction_config:
+            monitor.log_warning(extraction_config.table_name, error_msg, 
+                              {"interrupted_at": datetime.now().isoformat()})
         return 130
         
-    except ConfigurationError as e:
-        error_msg = f"Configuration Error: {e}"
-        if logger:
-            logger.error(error_msg)
-        else:
-            print(f"ERROR: {error_msg}")
-        return 1
+    except (ConfigurationError, ConnectionError, ExtractionError, LoadError) as e:
+        error_type = type(e).__name__
+        error_msg = f"{error_type}: {str(e)}"
         
-    except ConnectionError as e:
-        error_msg = f"Connection Error: {e}"
-        if logger:
-            logger.error(error_msg)
-        else:
+        if logger: 
+            logger.error(f"❌ {error_msg}")
+        else: 
             print(f"ERROR: {error_msg}")
-        return 2
         
-    except ExtractionError as e:
-        error_msg = f"Extraction Error: {e}"
-        if logger:
-            logger.error(error_msg)
-        else:
-            print(f"ERROR: {error_msg}")
-        return 3
+        # Log error SOLO a través del monitor
+        if monitor and extraction_config:
+            monitor.log_error(
+                table_name=extraction_config.table_name,
+                error_message=error_msg,
+                metadata={
+                    "error_type": error_type,
+                    "failed_at": datetime.now().isoformat(),
+                    "process_id": process_id
+                }
+            )
         
-    except LoadError as e:
-        error_msg = f"Load Error: {e}"
-        if logger:
-            logger.error(error_msg)
-        else:
-            print(f"ERROR: {error_msg}")
-        return 4
+        # Return different codes for different error types
+        error_codes = {
+            'ConfigurationError': 1,
+            'ConnectionError': 2, 
+            'ExtractionError': 3,
+            'LoadError': 4
+        }
+        return error_codes.get(error_type, 99)
         
     except Exception as e:
-        error_msg = f"Unexpected Error: {e}"
+        error_msg = f"Unexpected Error: {str(e)}"
+        
         if logger:
-            logger.error(error_msg)
+            logger.error(f"💥 {error_msg}")
             logger.error(traceback.format_exc())
         else:
             print(f"ERROR: {error_msg}")
-            traceback.print_exc()
+            traceback.print_exc()        
         return 99
 
 if __name__ == '__main__':

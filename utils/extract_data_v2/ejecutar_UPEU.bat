@@ -10,9 +10,7 @@ cd /c C:\WORKSPACE\CDK\cdk-datalake-ingest-upeu\utils\extract_data_v2
 REM Iterar sobre las tablas del archivo tablas.txt
 for /f %%T in (tables.txt) do (
     echo Procesando tabla %%T...
-    python main.py -t %%T
+    python main.py -t %%T -m normal
 )
 
-python execute_stage.py
-
-pause
+python execute_stage.py --process-id=10 --instance=PE --endpoint PEUPEU

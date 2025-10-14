@@ -1,16 +1,38 @@
 @echo off
 setlocal
 
-REM Activar el entorno virtual desde la raíz del proyecto
-call C:\WORKSPACE\CDK\cdk-datalake-ingest-upeu\.venv\Scripts\activate.bat
+REM ===========================================================
+REM  Script: ingest_normal.bat
+REM  Descripción: Ejecuta la carga normal de tablas para BigMagic
+REM  Autor: Miguel Espinoza
+REM  Fecha: %date% %time%
+REM ===========================================================
 
-REM Movernos a la carpeta donde está el script y el txt
-cd /c C:\WORKSPACE\CDK\cdk-datalake-ingest-upeu\utils\extract_data_v2
+REM ---- Detectar ruta base automáticamente ----
+set PROJECT_DIR=D:\WORKSPACE-GIT\VALORX\cdk-datalake-ingest-bigmagic
+set SCRIPT_DIR=%PROJECT_DIR%\utils\extract_data_v2
+set VENV_PYTHON=%PROJECT_DIR%\.venv\Scripts\python.exe
 
-REM Iterar sobre las tablas del archivo tablas.txt
-for /f %%T in (tables.txt) do (
-    echo Procesando tabla %%T...
-    python main.py -t %%T -m normal
+REM ---- Cambiar al directorio donde están los scripts ----
+cd /d "%SCRIPT_DIR%"
+
+REM ---- Verificar entorno virtual ----
+if not exist "%VENV_PYTHON%" (
+    echo ERROR: No se encontró el entorno virtual en "%VENV_PYTHON%"
+    exit /b 1
 )
 
-python execute_stage.py --process-id=10 --instance=PE --endpoint PEUPEU
+REM ---- Iterar sobre las tablas del archivo tables.txt ----
+set PYTHONIOENCODING=utf-8
+for /f %%T in (tables.txt) do (
+    echo Procesando tabla %%T...
+    "%VENV_PYTHON%" main.py -t %%T -m normal
+)
+
+REM ---- Ejecutar etapa final ----
+echo Ejecutando etapa final...
+"%VENV_PYTHON%" execute_stage.py --process-id=10 --instance=PE
+
+echo Proceso finalizado correctamente.
+endlocal
+exit /b 0

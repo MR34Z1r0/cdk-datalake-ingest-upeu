@@ -638,7 +638,7 @@ class CdkDatalakeIngestUpeuInstanceStack(Stack):
                     "endpoint_name": endpoint_name,
                     "instance": self.instance_name,
                     "scheduled_execution": True,
-                    "run_extract": True,
+                    "run_extract": False,
                 }
                 
                 # Create scheduler configuration

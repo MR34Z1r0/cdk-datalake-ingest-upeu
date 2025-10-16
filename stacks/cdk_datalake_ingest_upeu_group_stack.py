@@ -517,7 +517,7 @@ class CdkDatalakeIngestUpeuGroupStack(Stack):
             
             # Define the choice conditions and workflow branches
             definition = run_extract_choice.when(
-                sfn.Condition.boolean_equals("$.run_extract", True), #False to test transform only
+                sfn.Condition.boolean_equals("$.run_extract", True),
                 extract_workflow
             ).otherwise(
                 transform_only_workflow

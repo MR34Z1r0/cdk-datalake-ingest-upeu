@@ -9,7 +9,7 @@ REM  Fecha: %date% %time%
 REM ===========================================================
 
 REM ---- Detectar ruta base automáticamente ----
-set PROJECT_DIR=D:\WORKSPACE-GIT\VALORX\cdk-datalake-ingest-upeu
+set PROJECT_DIR=D:\WORKSPACE-GIT\cdk-datalake-ingest-upeu
 set SCRIPT_DIR=%PROJECT_DIR%\utils\extract_data_v2
 set VENV_PYTHON=%PROJECT_DIR%\.venv\Scripts\python.exe
 

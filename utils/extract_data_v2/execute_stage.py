@@ -8,14 +8,13 @@ import os
 # Cargar variables de entorno desde .env
 load_dotenv()
 
-def execute_step_function(process_id, instance, endpoint_name):
+def execute_step_function(process_id, instance):
     """
     Ejecuta un Step Function de AWS con los parámetros especificados.
     
     Args:
         process_id: ID del proceso
         instance: Instancia (ej: PE)
-        endpoint_name: Nombre del endpoint (ej: PEBDDATA2)
     """
     
     # Obtener configuración desde variables de entorno
@@ -41,9 +40,8 @@ def execute_step_function(process_id, instance, endpoint_name):
     # Preparar los datos de entrada
     input_data = {
         "process_id": process_id,
-        "endpoint_name": endpoint_name,
         "instance": instance,
-        "scheduled_execution": False,
+        "scheduled_execution": True,
         "run_extract": False
     }
     
@@ -79,15 +77,13 @@ def main():
     parser = argparse.ArgumentParser(description='Ejecutar Step Function de AWS')
     parser.add_argument('--process-id', required=True, help='ID del proceso')
     parser.add_argument('--instance', required=True, help='Instancia (ej: PE)')
-    parser.add_argument('--endpoint', required=True, help='Nombre del endpoint (ej: PEBDDATA2)')
     
     args = parser.parse_args()
     
     # Ejecutar el Step Function
     execute_step_function(
         process_id=args.process_id,
-        instance=args.instance,
-        endpoint_name=args.endpoint
+        instance=args.instance
     )
 
 if __name__ == "__main__":

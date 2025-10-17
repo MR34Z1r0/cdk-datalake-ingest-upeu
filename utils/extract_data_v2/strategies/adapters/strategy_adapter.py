@@ -4,7 +4,7 @@ from interfaces.strategy_interface import StrategyInterface
 from ..base.extraction_strategy import ExtractionStrategy
 from ..base.extraction_params import ExtractionParams
 from aje_libs.common.datalake_logger import DataLakeLogger
-from ...core.partition_formatter import PartitionFormatter
+from core.partition_formatter import PartitionFormatter
 
 logger = DataLakeLogger.get_logger(__name__)
 

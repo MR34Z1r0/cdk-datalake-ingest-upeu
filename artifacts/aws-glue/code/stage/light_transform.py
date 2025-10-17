@@ -1486,7 +1486,8 @@ class DataProcessor:
                     source_table_type=row.get('SOURCE_TABLE_TYPE', 'm'),
                     load_type=row.get('LOAD_TYPE', ''),
                     num_days=row.get('NUM_DAYS'),
-                    delay_incremental_ini=row.get('DELAY_INCREMENTAL_INI', '-2')
+                    delay_incremental_ini=row.get('DELAY_INCREMENTAL_INI', '-2'),
+                    partition_format=row.get('PARTITION_FORMAT')
                 )
         raise DataValidationException(f"Configuración de tabla no encontrada: {table_name}")
     
@@ -1527,14 +1528,16 @@ class DataProcessor:
     def _build_s3_paths(self, args: Dict[str, str], table_config: TableConfig) -> Dict[str, str]:
         """Construye rutas S3"""
         now_lima = dt.datetime.now(TZ_LIMA)
-        year = now_lima.strftime('%Y')
-        month = now_lima.strftime('%m')
-        day = now_lima.strftime('%d')
-        
+
         # Extraer nombre limpio de tabla
         source_table_clean = table_config.source_table.split()[0] if ' ' in table_config.source_table else table_config.source_table
+
+        # Usar PartitionFormatter para generar la ruta
+        partition_format = table_config.partition_format or "year={YYYY}/month={MM}/day={DD}"
+        formatter = PartitionFormatter(partition_format)
+        partition_path = formatter.format_path(now_lima)
         
-        day_route = f"{args['TEAM']}/{args['DATA_SOURCE']}/{args['ENDPOINT_NAME']}/{source_table_clean}/year={year}/month={month}/day={day}/"
+        day_route = f"{args['TEAM']}/{args['DATA_SOURCE']}/{args['ENDPOINT_NAME']}/{source_table_clean}/{partition_path}/"
         
         return {
             'raw': f"s3://{args['S3_RAW_BUCKET']}/{day_route}",
@@ -1542,14 +1545,20 @@ class DataProcessor:
         }
     
     def _read_source_data(self, s3_raw_path: str):
-        """Lee datos fuente con cache"""
+        """Lee datos fuente detectando el formato de partición automáticamente"""
         try:
+            # Detectar si hay wildcards en la ruta para particiones dinámicas
+            if '*' not in s3_raw_path:
+                # Si no hay wildcards, agregar comodines para todas las particiones posibles
+                # Esto permite leer datos sin importar el formato de partición usado
+                base_path = s3_raw_path.rstrip('/')
+                s3_raw_path = f"{base_path}/**/*.parquet"
+            
             df = self.spark.read.format("parquet").load(s3_raw_path)
-            df.cache()  # Cache para optimizar múltiples operaciones
+            df.cache()
             return df
         except Exception as e:
             self.logger.error(f"Error leyendo datos desde {s3_raw_path}: {str(e)}")
-            # Retornar DataFrame vacío en caso de error
             return self.spark.createDataFrame([], StructType([]))
     
     def _apply_post_processing(self, df, columns_metadata: List[ColumnMetadata]):
@@ -1581,6 +1590,109 @@ class DataProcessor:
         schema = StructType(fields)
         return self.spark.createDataFrame([], schema)
 
+class PartitionFormatter:
+    """Formatea rutas de partición basadas en plantillas configurables"""
+    
+    DEFAULT_FORMAT = "year={YYYY}/month={MM}/day={DD}"
+    TZ_LIMA = pytz.timezone('America/Lima')
+    
+    # Mapeo de tokens a formatos strftime
+    TOKEN_MAPPING = {
+        '{YYYY}': '%Y',
+        '{YY}': '%y',
+        '{MM}': '%m',
+        '{MON}': '%b',
+        '{DD}': '%d',
+        '{HH}': '%H',
+        '{MI}': '%M',
+        '{SS}': '%S',
+        '{WEEK}': '%W',
+        '{QUARTER}': None  # Manejado especialmente
+    }
+    
+    def __init__(self, format_template: Optional[str] = None):
+        """
+        Inicializa el formateador con una plantilla
+        
+        Args:
+            format_template: Plantilla de formato o None para usar default
+        """
+        self.format_template = format_template or self.DEFAULT_FORMAT
+        self.validate_format()
+    
+    def validate_format(self) -> None:
+        """Valida que el formato contenga tokens válidos"""
+        # Extraer todos los tokens del formato
+        tokens = re.findall(r'\{[^}]+\}', self.format_template)
+        
+        for token in tokens:
+            if token not in self.TOKEN_MAPPING:
+                raise ValueError(f"Token no válido en formato de partición: {token}")
+    
+    def format_path(self, timestamp: Optional[datetime] = None) -> str:
+        """
+        Formatea la ruta de partición basada en la plantilla
+        
+        Args:
+            timestamp: Timestamp a usar, si es None usa el actual
+            
+        Returns:
+            Ruta formateada según la plantilla
+        """
+        if timestamp is None:
+            timestamp = datetime.now(self.TZ_LIMA)
+        elif timestamp.tzinfo is None:
+            timestamp = self.TZ_LIMA.localize(timestamp)
+        
+        formatted_path = self.format_template
+        
+        for token, strftime_format in self.TOKEN_MAPPING.items():
+            if token in formatted_path:
+                if token == '{QUARTER}':
+                    # Manejo especial para trimestres
+                    quarter = (timestamp.month - 1) // 3 + 1
+                    value = f"Q{quarter}"
+                else:
+                    value = timestamp.strftime(strftime_format)
+                
+                formatted_path = formatted_path.replace(token, value)
+        
+        return formatted_path
+    
+    def extract_partition_values(self, path: str) -> Dict[str, str]:
+        """
+        Extrae valores de partición de una ruta existente
+        
+        Args:
+            path: Ruta con particiones
+            
+        Returns:
+            Diccionario con nombres y valores de particiones
+        """
+        partition_values = {}
+        
+        # Buscar patrones tipo key=value
+        matches = re.findall(r'(\w+)=([^/]+)', path)
+        
+        for key, value in matches:
+            partition_values[key] = value
+        
+        return partition_values
+    
+    @classmethod
+    def parse_partition_path(cls, path: str) -> Dict[str, str]:
+        """
+        Parsea una ruta de partición y retorna sus componentes
+        
+        Args:
+            path: Ruta con formato de partición
+            
+        Returns:
+            Diccionario con los componentes de la partición
+        """
+        formatter = cls()
+        return formatter.extract_partition_values(path)
+    
 def setup_logging(table_name: str, team: str, data_source: str):
     """
     Setup DataLakeLogger configuration - siguiendo estándar EXACTO de extract_data_v2

@@ -23,7 +23,7 @@ from strategies.strategy_factory import StrategyFactory
 from utils.csv_loader import CSVConfigLoader
 from exceptions.custom_exceptions import *
 from config.settings import settings
-            
+from partition_formatter import PartitionFormatter
 
 class DataExtractionOrchestrator:
     """Main orchestrator for the data extraction process"""
@@ -34,6 +34,9 @@ class DataExtractionOrchestrator:
         self.process_guid = process_guid
         self.table_config: Optional[TableConfig] = None
         self.database_config: Optional[DatabaseConfig] = None
+        
+        partition_format = self.table_config.partition_format if self.table_config else None
+        self.partition_formatter = PartitionFormatter(partition_format)
     
         # Inicializar logger - AGREGAR ESTA LÍNEA
         from aje_libs.common.datalake_logger import DataLakeLogger
@@ -797,15 +800,17 @@ class DataExtractionOrchestrator:
         return files_created, total_records
     
     def _build_destination_path(self) -> str:
-        """Build destination path for files"""
-        from utils.date_utils import get_date_parts
-        
-        year, month, day = get_date_parts()
-        
-        # Get clean table name
+        """Build destination path for files with configurable partition format"""
+        # Obtener nombre limpio de tabla
         clean_table_name = self._get_clean_table_name()
         
-        return f"{self.extraction_config.team}/{self.extraction_config.data_source}/{self.extraction_config.endpoint_name}/{clean_table_name}/year={year}/month={month}/day={day}/"
+        # 🆕 Generar ruta de partición usando el formato configurado
+        partition_path = self.partition_formatter.format_path()
+        
+        return (f"{self.extraction_config.team}/"
+                f"{self.extraction_config.data_source}/"
+                f"{self.extraction_config.endpoint_name}/"
+                f"{clean_table_name}/{partition_path}/")
     
     def _get_clean_table_name(self) -> str:
         """Extract clean table name from SOURCE_TABLE, removing alias after space"""

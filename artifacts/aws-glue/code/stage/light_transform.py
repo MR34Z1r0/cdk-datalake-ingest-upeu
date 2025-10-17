@@ -1362,7 +1362,7 @@ class DataProcessor:
         self.now_lima = dt.datetime.now(pytz.utc).astimezone(TZ_LIMA)
     
     def process_table(self, args: Dict[str, str]) -> None:
-        """Procesa una tabla completa con logging detallado"""
+        """Procesa una tabla completa con logging detallado y optimizado"""
         table_name = args['TABLE_NAME']
         
         try:
@@ -1377,12 +1377,12 @@ class DataProcessor:
             s3_paths = self._build_s3_paths(args, table_config)
             self.logger.info(f"📂 Rutas S3 configuradas raw_path: {s3_paths['raw']} stage_path {s3_paths['stage']}")
             
-            # Leer datos source
+            # 🔍 OPTIMIZACIÓN: Leer datos con verificación mejorada
             source_df = self._read_source_data(s3_paths['raw'])
             
             records_count = source_df.count()
             
-            # ✅ MANEJO DE TABLA VACÍA - Verificar si existe Delta Table
+            # ✅ MANEJO DE TABLA VACÍA
             if records_count == 0:
                 self.logger.warning(f"⚠️ No se encontraron datos para procesar table: {table_name}")
                 
@@ -1391,14 +1391,16 @@ class DataProcessor:
                     self.logger.info(f"✅ Tabla Delta ya existe en {s3_paths['stage']}, no se requiere acción")
                 else:
                     self.logger.info(f"📝 Creando tabla Delta vacía en {s3_paths['stage']}")
-                    # Crear DataFrame vacío con esquema correcto
                     empty_df = self._create_empty_dataframe(columns_metadata)
                     partition_columns = [col.name for col in columns_metadata if col.is_partition]
                     self.delta_manager.write_delta_table(empty_df, s3_paths['stage'], partition_columns)
                     self.logger.info(f"✅ Tabla Delta vacía creada exitosamente")
                 
-                # Lanzar excepción para que main() maneje el WARNING
-                raise DataValidationException("No data detected to migrate - empty table")
+                # Lanzar excepción para registro como WARNING
+                raise DataValidationException(
+                    f"No data to process for table {table_name} - "
+                    f"source path exists but contains no records"
+                )
             
             self.logger.info(f"📊 Datos fuente leídos table: {table_name} records_count: {records_count}")
             
@@ -1544,22 +1546,106 @@ class DataProcessor:
             'stage': f"s3://{args['S3_STAGE_BUCKET']}/{args['TEAM']}/{args['DATA_SOURCE']}/{args['ENDPOINT_NAME']}/{args['TABLE_NAME']}/"
         }
     
-    def _read_source_data(self, s3_raw_path: str):
-        """Lee datos fuente detectando el formato de partición automáticamente"""
-        try:
-            # Detectar si hay wildcards en la ruta para particiones dinámicas
-            if '*' not in s3_raw_path:
-                # Si no hay wildcards, agregar comodines para todas las particiones posibles
-                # Esto permite leer datos sin importar el formato de partición usado
-                base_path = s3_raw_path.rstrip('/')
-                s3_raw_path = f"{base_path}/**/*.parquet"
+    def _check_s3_path_exists(self, s3_path: str) -> bool:
+        """
+        Verifica si existe al menos un archivo en la ruta S3
+        
+        Args:
+            s3_path: Ruta S3 a verificar
             
-            df = self.spark.read.format("parquet").load(s3_raw_path)
-            df.cache()
-            return df
+        Returns:
+            True si existen archivos, False en caso contrario
+        """
+        try:
+            # Extraer bucket y prefix de la ruta S3
+            if s3_path.startswith('s3://'):
+                s3_path = s3_path[5:]
+            
+            parts = s3_path.split('/', 1)
+            bucket = parts[0]
+            prefix = parts[1] if len(parts) > 1 else ''
+            
+            # Verificar si hay al menos un objeto con ese prefix
+            s3_client = boto3.client('s3')
+            response = s3_client.list_objects_v2(
+                Bucket=bucket,
+                Prefix=prefix,
+                MaxKeys=1
+            )
+            
+            return response.get('KeyCount', 0) > 0
+            
         except Exception as e:
-            self.logger.error(f"Error leyendo datos desde {s3_raw_path}: {str(e)}")
-            return self.spark.createDataFrame([], StructType([]))
+            self.logger.error(f"Error verificando existencia de ruta S3 {s3_path}: {str(e)}")
+            return False
+
+    def _read_source_data(self, s3_raw_path: str):
+        """
+        Lee datos fuente con verificación optimizada de existencia de ruta
+        
+        OPTIMIZACIÓN: Verifica si la ruta existe antes de intentar leer,
+        evitando errores costosos de Spark y permitiendo manejo específico
+        de rutas inexistentes.
+        """
+        try:
+            # 🔍 OPTIMIZACIÓN 1: Verificar existencia de ruta ANTES de leer
+            base_path = s3_raw_path.rstrip('/')
+            search_path = f"{base_path}/**/*.parquet" if '*' not in s3_raw_path else s3_raw_path
+            
+            # Extraer la ruta base para verificación (sin wildcards)
+            verification_path = base_path
+            
+            if not self._check_s3_path_exists(verification_path):
+                # 🎯 CASO ESPECÍFICO: Ruta no existe
+                self.logger.warning(
+                    f"⚠️ Ruta S3 no existe o está vacía: {s3_raw_path} "
+                    f"- Se procederá con DataFrame vacío"
+                )
+                # Lanzar excepción específica para que se maneje como WARNING
+                raise DataValidationException(
+                    f"Source path does not exist: {s3_raw_path} "
+                    f"- No data available to process"
+                )
+            
+            # 🔍 OPTIMIZACIÓN 2: La ruta existe, proceder con lectura normal
+            self.logger.info(f"✅ Ruta S3 verificada, procediendo con lectura: {search_path}")
+            
+            df = self.spark.read.format("parquet").load(search_path)
+            df.cache()
+            
+            # 🔍 OPTIMIZACIÓN 3: Verificar si el DataFrame tiene datos
+            record_count = df.count()
+            if record_count == 0:
+                self.logger.warning(
+                    f"⚠️ Ruta existe pero no contiene datos: {s3_raw_path}"
+                )
+            
+            return df
+            
+        except DataValidationException:
+            # Re-lanzar excepciones de validación para manejo específico
+            raise
+            
+        except Exception as e:
+            # 🔍 OPTIMIZACIÓN 4: Logging detallado de errores de lectura
+            error_msg = str(e)
+            
+            # Detectar tipos específicos de error
+            if "Path does not exist" in error_msg or "FileNotFoundException" in error_msg:
+                self.logger.warning(
+                    f"⚠️ Archivos no encontrados en: {s3_raw_path} "
+                    f"- Error: {error_msg}"
+                )
+                raise DataValidationException(
+                    f"Source files not found: {s3_raw_path} - {error_msg}"
+                )
+            else:
+                # Otros errores de lectura son FAILED, no WARNING
+                self.logger.error(
+                    f"❌ Error leyendo datos desde {s3_raw_path}: {error_msg}",
+                    exc_info=True
+                )
+                raise  # Re-lanzar para que se maneje como error real
     
     def _apply_post_processing(self, df, columns_metadata: List[ColumnMetadata]):
         """Aplica post-procesamiento: deduplicación y ordenamiento"""

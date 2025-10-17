@@ -542,6 +542,8 @@ class TableConfig:
     load_type: str
     num_days: Optional[str] = None
     delay_incremental_ini: str = "-2"
+    delay_incremental_end: str = "0"
+    partition_format: Optional[str] = None 
 
 @dataclass
 class EndpointConfig:
@@ -551,6 +553,13 @@ class EndpointConfig:
     src_db_name: str
     src_server_name: str
     src_db_username: str
+
+class TransformationWarningException(Exception):
+    """Excepción para transformaciones completadas con advertencias"""
+    def __init__(self, warnings: List[str], message: str):
+        self.warnings = warnings
+        self.message = message
+        super().__init__(message)
 
 class TransformationException(Exception):
     """Excepción específica para errores de transformación"""
@@ -792,6 +801,7 @@ class TransformationEngine:
         Infiere el tipo de retorno de una función de transformación
         """
         type_mapping = {
+            'fn_transform_Date': 'date',
             'fn_transform_DateMagic': 'date',
             'fn_transform_DatetimeMagic': 'timestamp',
             'fn_transform_Datetime': 'timestamp',
@@ -1089,6 +1099,55 @@ class TransformationEngine:
             
             return date_format(date_param, format_param)
         
+        elif function_name == 'fn_transform_Date':
+            """
+            Convierte columna a Date con formato y valor por defecto
+            Similar a fn_transform_DateMagic pero más simple (sin números mágicos)
+            Params: [origin_column, format, default_value]
+            """
+            if len(params) < 2:
+                raise TransformationException("fn_transform_Date", "Requiere al menos 2 parámetros")
+            
+            origin_param = params[0]
+            date_format_param = params[1]
+            default_value = params[2] if len(params) > 2 else 'to_null'
+            
+            # Convertir a expresión si es string
+            if isinstance(origin_param, str):
+                origin_param = col(origin_param)
+            
+            # Extraer formato
+            date_format_str = date_format_param if isinstance(date_format_param, str) else 'yyyy-MM-dd'
+            
+            # Mapeo de formatos
+            format_mapping = {
+                'yyyy-MM-dd': 'yyyy-MM-dd',
+                'yyyyMMdd': 'yyyyMMdd',
+                'dd/MM/yyyy': 'dd/MM/yyyy',
+                'MM/dd/yyyy': 'MM/dd/yyyy'
+            }
+            spark_format = format_mapping.get(date_format_str, 'yyyy-MM-dd')
+            
+            # Valor por defecto
+            if isinstance(default_value, str):
+                if default_value.lower() == 'to_null':
+                    default_value_lit = lit(None).cast(DateType())
+                else:
+                    default_value_lit = to_date(lit(default_value), 'yyyy-MM-dd')
+            else:
+                default_value_lit = default_value
+            
+            # Intentar parsear como fecha
+            return when(
+                origin_param.isNull(),
+                default_value_lit
+            ).otherwise(
+                coalesce(
+                    to_date(origin_param.cast(StringType()), spark_format),
+                    default_value_lit
+                )
+            )
+
         elif function_name == 'fn_transform_PeriodMagic':
             """
             Crea un período en formato YYYYMM combinando ejercicio y periodo
@@ -1409,8 +1468,45 @@ class DataProcessor:
                 source_df, columns_metadata
             )
             
+            # 🆕 NUEVO: Evaluar severidad de los errores
             if transformation_errors:
-                self.logger.warning(f"⚠️ Errores de transformación detectados table: {table_name} errors_count: {len(transformation_errors)} errors: {transformation_errors[:3]}")
+                error_count = len(transformation_errors)
+                total_columns = len(columns_metadata)
+                error_percentage = (error_count / total_columns) * 100
+                
+                self.logger.warning(
+                    f"⚠️ Errores de transformación detectados: "
+                    f"table={table_name} errors_count={error_count}/{total_columns} "
+                    f"error_percentage={error_percentage:.2f}%"
+                )
+                
+                # Log detallado de cada error
+                for idx, error in enumerate(transformation_errors, 1):
+                    self.logger.error(f"  {idx}. {error}")
+                
+                # 🎯 CRITERIO DE FALLO: Si más del 50% de columnas fallan, es FAILED
+                if error_percentage > 50:
+                    raise TransformationException(
+                        column_name="multiple_columns",
+                        message=f"Transformación fallida: {error_count}/{total_columns} columnas con errores "
+                                f"({error_percentage:.2f}%). Errores: {transformation_errors[:3]}"
+                    )
+                
+                # 🎯 Si entre 10% y 50% de columnas fallan, es WARNING pero continúa
+                elif error_percentage > 10:
+                    self.logger.warning(
+                        f"⚠️ Transformación con errores significativos pero continuando: "
+                        f"{error_percentage:.2f}% de columnas afectadas"
+                    )
+                    # Aquí podríamos almacenar los errores para reportarlos al final
+                    self._transformation_warnings = transformation_errors
+                
+                # Si menos del 10%, solo log de advertencia
+                else:
+                    self.logger.warning(
+                        f"ℹ️ Errores menores de transformación: {error_percentage:.2f}% de columnas afectadas"
+                    )
+                    self._transformation_warnings = transformation_errors
             
             # Post-procesamiento y escritura
             final_df = self._apply_post_processing(transformed_df, columns_metadata)
@@ -1423,6 +1519,13 @@ class DataProcessor:
             # Optimizar tabla Delta
             self.delta_manager.optimize_delta_table(s3_paths['stage'])
             self.logger.info(f"🎯 Tabla Delta optimizada table: {table_name}")
+            
+            # 🆕 NUEVO: Si hay warnings de transformación, lanzar excepción especial
+            if hasattr(self, '_transformation_warnings') and self._transformation_warnings:
+                raise TransformationWarningException(
+                    warnings=self._transformation_warnings,
+                    message=f"Proceso completado con {len(self._transformation_warnings)} advertencias de transformación"
+                )
         
         except Exception as e:
             # Propagar la excepción para que sea manejada en main()
@@ -1528,8 +1631,56 @@ class DataProcessor:
         return columns_metadata
     
     def _build_s3_paths(self, args: Dict[str, str], table_config: TableConfig) -> Dict[str, str]:
-        """Construye rutas S3"""
-        now_lima = dt.datetime.now(TZ_LIMA)
+        """Construye rutas S3 usando DATE_PROCESS si está disponible, sino usa fecha actual"""
+        
+        # 🆕 CAMBIO: Soportar múltiples formatos de fecha
+        if 'DATE_PROCESS' in args and args['DATE_PROCESS']:
+            try:
+                date_str = args['DATE_PROCESS'].strip()
+                
+                # 🔑 INTENTAR MÚLTIPLES FORMATOS
+                date_formats = [
+                    '%Y-%m-%d %H:%M:%S',      # 2025-10-17 14:30:00
+                    '%Y-%m-%d %H:%M',         # 2025-10-17 14:30
+                    '%Y-%m-%dT%H:%M:%S',      # 2025-10-17T14:30:00 (ISO format)
+                    '%Y-%m-%dT%H:%M:%SZ',     # 2025-10-17T14:30:00Z (UTC)
+                    '%Y-%m-%dT%H:%M:%S.%f',   # 2025-10-17T14:30:00.123456
+                    '%Y-%m-%d',               # 2025-10-17 (solo fecha)
+                    '%Y%m%d',                 # 20251017 (formato compacto)
+                    '%Y%m%d%H%M%S',           # 20251017143000 (formato compacto con hora)
+                ]
+                
+                date_process = None
+                used_format = None
+                
+                for fmt in date_formats:
+                    try:
+                        date_process = dt.datetime.strptime(date_str, fmt)
+                        used_format = fmt
+                        break
+                    except ValueError:
+                        continue
+                
+                if date_process is None:
+                    raise ValueError(f"No se pudo parsear la fecha con ningún formato soportado: {date_str}")
+                
+                # Localizar a timezone Lima
+                date_to_use = TZ_LIMA.localize(date_process)
+                
+                self.logger.info(f"📅 Usando DATE_PROCESS: {args['DATE_PROCESS']}")
+                self.logger.info(f"✅ Formato detectado: {used_format}")
+                self.logger.info(f"🕐 Fecha parseada: {date_to_use.strftime('%Y-%m-%d %H:%M:%S')}")
+                
+            except ValueError as e:
+                self.logger.warning(
+                    f"⚠️ DATE_PROCESS inválido '{args['DATE_PROCESS']}', usando fecha actual. "
+                    f"Error: {e}"
+                )
+                date_to_use = dt.datetime.now(TZ_LIMA)
+        else:
+            # Usar fecha actual si no se proporciona DATE_PROCESS
+            date_to_use = dt.datetime.now(TZ_LIMA)
+            self.logger.info(f"📅 DATE_PROCESS no proporcionado, usando fecha actual: {date_to_use.strftime('%Y-%m-%d %H:%M:%S')}")
 
         # Extraer nombre limpio de tabla
         source_table_clean = table_config.source_table.split()[0] if ' ' in table_config.source_table else table_config.source_table
@@ -1537,13 +1688,19 @@ class DataProcessor:
         # Usar PartitionFormatter para generar la ruta
         partition_format = table_config.partition_format or "year={YYYY}/month={MM}/day={DD}"
         formatter = PartitionFormatter(partition_format)
-        partition_path = formatter.format_path(now_lima)
+        partition_path = formatter.format_path(date_to_use)
         
         day_route = f"{args['TEAM']}/{args['DATA_SOURCE']}/{args['ENDPOINT_NAME']}/{source_table_clean}/{partition_path}/"
         
+        raw_path = f"s3://{args['S3_RAW_BUCKET']}/{day_route}"
+        stage_path = f"s3://{args['S3_STAGE_BUCKET']}/{args['TEAM']}/{args['DATA_SOURCE']}/{args['ENDPOINT_NAME']}/{args['TABLE_NAME']}/"
+        
+        self.logger.info(f"📂 Ruta RAW construida: {raw_path}")
+        self.logger.info(f"📂 Ruta STAGE construida: {stage_path}")
+        
         return {
-            'raw': f"s3://{args['S3_RAW_BUCKET']}/{day_route}",
-            'stage': f"s3://{args['S3_STAGE_BUCKET']}/{args['TEAM']}/{args['DATA_SOURCE']}/{args['ENDPOINT_NAME']}/{args['TABLE_NAME']}/"
+            'raw': raw_path,
+            'stage': stage_path
         }
     
     def _check_s3_path_exists(self, s3_path: str) -> bool:
@@ -1582,70 +1739,49 @@ class DataProcessor:
     def _read_source_data(self, s3_raw_path: str):
         """
         Lee datos fuente con verificación optimizada de existencia de ruta
-        
-        OPTIMIZACIÓN: Verifica si la ruta existe antes de intentar leer,
-        evitando errores costosos de Spark y permitiendo manejo específico
-        de rutas inexistentes.
         """
         try:
-            # 🔍 OPTIMIZACIÓN 1: Verificar existencia de ruta ANTES de leer
             base_path = s3_raw_path.rstrip('/')
-            search_path = f"{base_path}/**/*.parquet" if '*' not in s3_raw_path else s3_raw_path
             
-            # Extraer la ruta base para verificación (sin wildcards)
-            verification_path = base_path
+            self.logger.info(f"🔍 Leyendo datos desde: {base_path}")
             
-            if not self._check_s3_path_exists(verification_path):
-                # 🎯 CASO ESPECÍFICO: Ruta no existe
-                self.logger.warning(
-                    f"⚠️ Ruta S3 no existe o está vacía: {s3_raw_path} "
-                    f"- Se procederá con DataFrame vacío"
-                )
-                # Lanzar excepción específica para que se maneje como WARNING
+            # Verificar si la ruta base existe
+            if not self._check_s3_path_exists(base_path):
+                self.logger.warning(f"⚠️ Ruta S3 no existe: {s3_raw_path}")
                 raise DataValidationException(
-                    f"Source path does not exist: {s3_raw_path} "
-                    f"- No data available to process"
+                    f"Source path does not exist: {s3_raw_path}"
                 )
             
-            # 🔍 OPTIMIZACIÓN 2: La ruta existe, proceder con lectura normal
-            self.logger.info(f"✅ Ruta S3 verificada, procediendo con lectura: {search_path}")
+            # 🆕 CAMBIO SIMPLE: Leer directamente sin wildcards
+            # Spark automáticamente encontrará archivos .parquet en la carpeta
+            self.logger.info(f"✅ Ruta S3 verificada, procediendo con lectura: {base_path}")
             
-            df = self.spark.read.format("parquet").load(search_path)
+            df = self.spark.read.format("parquet").load(base_path)
             df.cache()
             
-            # 🔍 OPTIMIZACIÓN 3: Verificar si el DataFrame tiene datos
+            # Verificar si el DataFrame tiene datos
             record_count = df.count()
             if record_count == 0:
-                self.logger.warning(
-                    f"⚠️ Ruta existe pero no contiene datos: {s3_raw_path}"
+                self.logger.warning(f"⚠️ Ruta existe pero no contiene datos: {s3_raw_path}")
+                raise DataValidationException(
+                    f"No data to process for path: {s3_raw_path}"
                 )
             
+            self.logger.info(f"📊 Datos leídos exitosamente: {record_count} registros")
             return df
-            
+                
         except DataValidationException:
-            # Re-lanzar excepciones de validación para manejo específico
             raise
             
         except Exception as e:
-            # 🔍 OPTIMIZACIÓN 4: Logging detallado de errores de lectura
             error_msg = str(e)
             
-            # Detectar tipos específicos de error
             if "Path does not exist" in error_msg or "FileNotFoundException" in error_msg:
-                self.logger.warning(
-                    f"⚠️ Archivos no encontrados en: {s3_raw_path} "
-                    f"- Error: {error_msg}"
-                )
-                raise DataValidationException(
-                    f"Source files not found: {s3_raw_path} - {error_msg}"
-                )
+                self.logger.warning(f"⚠️ Archivos no encontrados: {error_msg}")
+                raise DataValidationException(f"Source files not found: {s3_raw_path} - {error_msg}")
             else:
-                # Otros errores de lectura son FAILED, no WARNING
-                self.logger.error(
-                    f"❌ Error leyendo datos desde {s3_raw_path}: {error_msg}",
-                    exc_info=True
-                )
-                raise  # Re-lanzar para que se maneje como error real
+                self.logger.error(f"❌ Error leyendo datos: {error_msg}", exc_info=True)
+                raise
     
     def _apply_post_processing(self, df, columns_metadata: List[ColumnMetadata]):
         """Aplica post-procesamiento: deduplicación y ordenamiento"""
@@ -1715,7 +1851,7 @@ class PartitionFormatter:
             if token not in self.TOKEN_MAPPING:
                 raise ValueError(f"Token no válido en formato de partición: {token}")
     
-    def format_path(self, timestamp: Optional[datetime] = None) -> str:
+    def format_path(self, timestamp: Optional[dt.datetime] = None) -> str:
         """
         Formatea la ruta de partición basada en la plantilla
         
@@ -1726,7 +1862,7 @@ class PartitionFormatter:
             Ruta formateada según la plantilla
         """
         if timestamp is None:
-            timestamp = datetime.now(self.TZ_LIMA)
+            timestamp = dt.datetime.now(self.TZ_LIMA)
         elif timestamp.tzinfo is None:
             timestamp = self.TZ_LIMA.localize(timestamp)
         
@@ -1808,12 +1944,21 @@ def main():
     
     try:
         # Obtener argumentos de Glue
-        args = getResolvedOptions(
-            sys.argv, 
-            ['JOB_NAME', 'S3_RAW_BUCKET', 'S3_STAGE_BUCKET', 'DYNAMO_LOGS_TABLE', 
-             'TABLE_NAME', 'ARN_TOPIC_FAILED', 'PROJECT_NAME', 'TEAM', 'DATA_SOURCE', 
-             'TABLES_CSV_S3', 'CREDENTIALS_CSV_S3', 'COLUMNS_CSV_S3', 'ENDPOINT_NAME', 'ENVIRONMENT']
-        )
+        required_args = [
+            'JOB_NAME', 'S3_RAW_BUCKET', 'S3_STAGE_BUCKET', 'DYNAMO_LOGS_TABLE', 
+            'TABLE_NAME', 'ARN_TOPIC_FAILED', 'PROJECT_NAME', 'TEAM', 'DATA_SOURCE', 
+            'TABLES_CSV_S3', 'CREDENTIALS_CSV_S3', 'COLUMNS_CSV_S3', 'ENDPOINT_NAME', 'ENVIRONMENT'
+        ]
+        
+        args = getResolvedOptions(sys.argv, required_args)
+
+        # 🆕 NUEVO: Intentar obtener DATE_PROCESS como parámetro opcional
+        try:
+            optional_args = getResolvedOptions(sys.argv, ['DATE_PROCESS'])
+            args.update(optional_args)
+        except Exception:
+            # DATE_PROCESS no fue proporcionado, se usará fecha actual
+            args['DATE_PROCESS'] = None
         
         # Configurar DataLakeLogger globalmente
         setup_logging(
@@ -1852,7 +1997,9 @@ def main():
                 "s3_raw_bucket": args.get('S3_RAW_BUCKET'),
                 "s3_stage_bucket": args.get('S3_STAGE_BUCKET'),
                 "tables_csv_location": args.get('TABLES_CSV_S3'),
-                "flow_type": "light_transform"
+                "flow_type": "light_transform",
+                "date_process": args.get('DATE_PROCESS') or dt.datetime.now(TZ_LIMA).strftime('%Y-%m-%d'),
+                "is_reprocessing": bool(args.get('DATE_PROCESS'))
             }
         )
 
@@ -1892,7 +2039,7 @@ def main():
             dynamo_logger
         )
         
-        processor.process_table(args)
+        processor.process_table(args) 
 
         # ✅ Calcular duración
         end_time = dt.datetime.now()
@@ -1915,9 +2062,73 @@ def main():
          
         logger.info(f"✅ Light Transform completado exitosamente table: {args['TABLE_NAME']} process_id: {process_id} process_guid: {process_guid} duration: {execution_duration:.2f}s")
     
-    # ✅ ORDEN CORRECTO: Excepciones específicas PRIMERO, generales DESPUÉS
+    # 🆕 NUEVO: Capturar TransformationWarningException
+    except TransformationWarningException as e:
+        error_msg = str(e)
+        warning_count = len(e.warnings) if hasattr(e, 'warnings') else 0
+        
+        if logger:
+            logger.warning(
+                f"⚠️ Transformación completada con advertencias: {error_msg} "
+                f"table: {args.get('TABLE_NAME', 'unknown')} warnings_count: {warning_count}"
+            )
+        
+        # Calcular duración
+        end_time = dt.datetime.now()
+        execution_duration = (end_time - start_time).total_seconds()
+        
+        if monitor:
+            monitor.log_warning(
+                table_name=args.get('TABLE_NAME', 'unknown'),
+                warning_message=error_msg,
+                job_name=args.get('JOB_NAME', 'unknown'),
+                context={
+                    "warning_type": "transformation_warnings",
+                    "warnings_count": warning_count,
+                    "warnings_detail": e.warnings[:5] if hasattr(e, 'warnings') else [],  # Primeros 5
+                    "process_guid": process_guid,
+                    "execution_duration_seconds": execution_duration,
+                    "data_written": True,
+                    "spark_app_id": spark.sparkContext.applicationId if 'spark' in locals() and spark else None
+                }
+            )
+        
+        if logger:
+            logger.info("ℹ️ Job terminando como SUCCESS (con advertencias registradas)")
+    
+    # 🆕 NUEVO: Capturar TransformationException (errores críticos)
+    except TransformationException as e:
+        error_msg = str(e)
+        if logger:
+            logger.error(
+                f"❌ Error crítico de transformación: {error_msg} "
+                f"table: {args.get('TABLE_NAME', 'unknown')} column: {e.column_name if hasattr(e, 'column_name') else 'unknown'}"
+            )
+        
+        # Calcular duración
+        end_time = dt.datetime.now()
+        execution_duration = (end_time - start_time).total_seconds()
+        
+        if monitor:
+            monitor.log_error(
+                table_name=args.get('TABLE_NAME', 'unknown'),
+                error_message=error_msg,
+                job_name=args.get('JOB_NAME', 'unknown'),
+                context={
+                    "error_type": "TransformationException",
+                    "error_column": e.column_name if hasattr(e, 'column_name') else 'unknown',
+                    "failed_at": end_time.isoformat(),
+                    "process_guid": process_guid,
+                    "execution_duration_before_failure": execution_duration,
+                    "spark_app_id": spark.sparkContext.applicationId if 'spark' in locals() and spark else None
+                }
+            )
+        
+        if logger:
+            logger.info("ℹ️ Job terminando como SUCCESS para evitar dobles notificaciones")
+    
+    # ✅ Caso especial: tabla vacía - registrar WARNING en lugar de FAILED
     except DataValidationException as e:
-        # ✅ Caso especial: tabla vacía - registrar WARNING en lugar de FAILED
         error_msg = str(e)
         if logger:
             logger.warning(f"⚠️ Validación de datos: {error_msg} table: {args.get('TABLE_NAME', 'unknown')}")
@@ -1958,8 +2169,8 @@ def main():
             if logger:
                 logger.info("ℹ️ Job terminando como SUCCESS para evitar dobles notificaciones")
     
-    except Exception as e:
-        # ✅ Cualquier otra excepción - registrar como FAILED
+    # ✅ Cualquier otra excepción - registrar como FAILED
+    except Exception as e:        
         error_msg = str(e)
         if logger:
             logger.error(f"❌ Error en Light Transform: {error_msg} table: {args.get('TABLE_NAME', 'unknown')} job: {args.get('JOB_NAME', 'unknown')} error_type: {type(e).__name__} process_guid: {process_guid}")
